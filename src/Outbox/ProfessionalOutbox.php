@@ -29,15 +29,16 @@ final readonly class ProfessionalOutbox
 
     /**
      * Keeps the declaration unless the outbox has a newer one, or the same record: only the date would change.
-     * Null, with nothing kept nor sent, for a person the system never assigned.
+     * Null, with nothing kept nor sent nor checked, for a person the system never assigned: the system declares every
+     * change without filters of its own, even of a record the platform would refuse. The tax code is matched in upper
+     * case.
      *
      * @throws ValidationException
      */
     public function declare(string $taxCode, ProfessionalRecordData $record): ?PlatformProfessionalOutbox
     {
-        ProfessionalRecordData::check($taxCode, $record);
-
-        $payload = $record->toWire();
+        // The counterparty of a transaction keeps the tax code in upper case: so does the outbox
+        $taxCode = mb_strtoupper(mb_trim($taxCode));
         $row = PlatformProfessionalOutbox::query()->firstOrNew(['tax_code' => $taxCode]);
 
         // A row already kept proves an assignment: only a first declaration looks for one
@@ -45,6 +46,10 @@ final readonly class ProfessionalOutbox
         {
             return null;
         }
+
+        ProfessionalRecordData::check($taxCode, $record);
+
+        $payload = $record->toWire();
 
         if ($row->exists && ($this->isNewer($row, $record) || $this->isSameRecord($row, $payload)))
         {

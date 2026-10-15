@@ -78,12 +78,31 @@ it('R18: declares nothing for a person the system never assigned, in any status 
     Queue::assertPushed(SendPlatformProfessional::class, 1);
 });
 
-it('refuses a declaration the platform would refuse, before keeping it', function (): void {
-    expect(fn () => $this->outbox->declare('01234567897', ProfessionalRecordData::from(professional())))
-        ->toThrow(ValidationException::class);
+it('refuses a declaration the platform would refuse for a person the system assigned, before keeping it', function (array $overrides): void {
+    expect(fn () => declareProfessional($overrides))->toThrow(ValidationException::class);
 
     expect(PlatformProfessionalOutbox::query()->count())->toBe(0);
     Queue::assertNotPushed(SendPlatformProfessional::class);
+})->with([
+    'without email' => [['email' => '']],
+]);
+
+it('R18: checks nothing for a person the system never assigned, so every change can be declared', function (string $taxCode, array $overrides): void {
+    $row = $this->outbox->declare($taxCode, ProfessionalRecordData::from(professional($overrides)));
+
+    expect($row)->toBeNull()
+        ->and(PlatformProfessionalOutbox::query()->count())->toBe(0);
+    Queue::assertNotPushed(SendPlatformProfessional::class);
+})->with([
+    'without email' => ['BNCLRA85T41F205Y', ['email' => '']],
+    'with the tax code of an organization' => ['01234567897', []],
+]);
+
+it('R18: declares the person the system assigned whatever the case of the tax code', function (): void {
+    $row = $this->outbox->declare(' rssmra80a01h501u ', ProfessionalRecordData::from(professional()));
+
+    expect($row?->tax_code)->toBe('RSSMRA80A01H501U');
+    Queue::assertPushed(SendPlatformProfessional::class, 1);
 });
 
 it('R18: queues again a declaration only while it waits', function (): void {

@@ -103,7 +103,7 @@ arch('assignments reach the register of the platform')
 
 ## Anagrafica dei professionisti
 
-- `declare()` non manda nulla per una persona che la outbox delle transazioni non ha mai visto: chiamala a ogni cambio, senza filtri tuoi.
+- `declare()` non manda nulla per una persona che la outbox delle transazioni non ha mai visto, e non ne controlla nemmeno i dati: chiamala a ogni cambio, senza filtri tuoi, anche per un referente senza email (passa `email: ''`). Per una persona incaricata, invece, dati non validi sono una `ValidationException`.
 - Quando l'anagrafica di un collaboratore persona cambia nel sistema, dichiarala con `resolve(ProfessionalOutbox::class)->declare($codiceFiscale, new ProfessionalRecordData(...))`, nella stessa transazione del database del cambio. `declared_at` è il momento del cambio, non quello dell'invio.
 - L'anagrafica è sempre completa: un campo facoltativo a `null` toglie il dato. Non mandare solo i campi cambiati. L'email è obbligatoria e va in minuscolo (T6), come nella controparte persona.
 - Non chiamare `Platform::declareProfessional()` a mano: l'outbox ripete il 404 finché ci sono transazioni alla persona non ancora registrate, e senza la ripetizione il cambio va perso (R18).
