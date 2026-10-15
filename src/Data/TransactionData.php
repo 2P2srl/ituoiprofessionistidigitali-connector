@@ -80,6 +80,7 @@ final class TransactionData extends Data
         $payload = is_array($context->payload) ? $context->payload : [];
         $status = TransactionStatus::tryFrom(TransactionActivityData::value($payload['status'] ?? null));
         $isPublication = $status?->isPublication() === true;
+        $isInvited = $status === TransactionStatus::Invited;
         $hasCounterparty = $status !== null && !$isPublication;
         // R16: an assignment born published keeps its expiry and whom it was open to after the selection
         $isBornPublished = ($payload['expires_at'] ?? null) !== null;
@@ -93,12 +94,13 @@ final class TransactionData extends Data
             'counterparty' => ['present', Rule::requiredIf($hasCounterparty), Rule::prohibitedIf($isPublication), 'nullable', 'array'],
             'typology' => ['required', 'string', 'regex:/^[a-z][a-z0-9_]*$/'],
             'status' => ['required', Rule::enum(TransactionStatus::class), self::followsActivities($status, $payload['activities'] ?? null)],
-            // R16: kept after the platform gives a counterparty to a published assignment; the platform checks the rest
-            'expires_at' => ['present', Rule::requiredIf($isPublication), 'nullable', 'after:sent_at'],
+            // R16: kept after the platform gives a counterparty to a published assignment, never in one still invited;
+            // the platform checks the rest
+            'expires_at' => ['present', Rule::requiredIf($isPublication), Rule::prohibitedIf($isInvited), 'nullable', 'after:sent_at'],
             // Texts of the firm, without data of the client: a published assignment shows them on the platform (rule R6)
             'title' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string', 'max:'.self::MAX_DESCRIPTION_LENGTH],
-            'responded_at' => ['present', Rule::requiredIf($status?->isAnswered() === true), Rule::prohibitedIf($status === TransactionStatus::Invited || $isPublication)],
+            'responded_at' => ['present', Rule::requiredIf($status?->isAnswered() === true), Rule::prohibitedIf($isInvited || $isPublication)],
             // R8 and R22: the work starts after the signature, which comes after the answer and before the closing
             'signed_at' => [
                 'present',
