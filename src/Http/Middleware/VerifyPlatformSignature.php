@@ -15,6 +15,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Refuses with 401, before anything reads the envelope, a webhook not signed by the platform (rule W4).
+ *
+ * @internal
  */
 final readonly class VerifyPlatformSignature
 {

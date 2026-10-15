@@ -11,6 +11,8 @@ use Illuminate\Filesystem\Filesystem;
  * Puts the configuration and the instructions for AI agents into the project that installs the package.
  *
  * Inside `vendor/` no agent reads them on its own: this command brings them where they are read.
+ *
+ * @internal
  */
 final class InstallCommand extends Command
 {

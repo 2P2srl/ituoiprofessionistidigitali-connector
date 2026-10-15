@@ -7,6 +7,7 @@ Regole per chi scrive codice che usa `ituoiprofessionistidigitali/connector` in 
 - Parla con il portale solo con `Platform::…` (o `PlatformClient`). Mai una `Http::post()` a mano verso `/api/v1`: token, nuovi tentativi, validazione ed errori stanno nel client.
 - Costruisci gli eventi con `EnvelopeData::make()` o, per rispondere, con `$evento->reply()`. Non comporre la busta come array.
 - Non inventare tipi di evento, versioni o campi del payload: esistono solo quelli di `Platform::eventTypes()`. Un tipo nuovo nasce nel portale, con una pull request, prima che un sistema lo mandi.
+- Non usare classi o metodi marcati `@internal`: li usa solo il pacchetto e cambiano senza avviso. Delle outbox usa `ProfessionalOutbox::declare()`, `TransactionOutbox::payloadOf()` e `isRecorded()`.
 
 ## Tipologie
 

@@ -65,6 +65,8 @@ final readonly class ProfessionalOutbox
 
     /**
      * Sends again the declaration waiting for the person, if any: a transaction to it was just confirmed.
+     *
+     * @internal
      */
     public function resume(string $taxCode): void
     {
@@ -77,6 +79,8 @@ final readonly class ProfessionalOutbox
     /**
      * Whether the outbox of the transactions has some to the person that the platform never confirmed and still
      * may: a failed one does not count.
+     *
+     * @internal
      */
     public function hasUnregisteredTransactions(string $taxCode): bool
     {

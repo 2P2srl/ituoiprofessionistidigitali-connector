@@ -8,6 +8,8 @@ use ITuoiProfessionistiDigitali\Connector\Enums\OutboxStatus;
 
 /**
  * The columns the outboxes share: the revision kept and the one confirmed, the payload, the status and the last error.
+ *
+ * @internal
  */
 trait HasOutboxColumns
 {

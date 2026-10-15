@@ -17,6 +17,8 @@ use Ramsey\Uuid\Uuid;
  *
  * The pong's event_id derives from the ping's, so a ping delivered twice yields one pong:
  * the platform answers the second one with 200 or 409 and nothing is sent twice.
+ *
+ * @internal
  */
 final readonly class ReplyToPing implements ShouldQueue
 {

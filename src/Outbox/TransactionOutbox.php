@@ -30,6 +30,8 @@ final readonly class TransactionOutbox
 
     /**
      * Null for a transaction never sent or published: a draft does not reach the register.
+     *
+     * @internal
      */
     public function record(RecordsPlatformTransaction $model): ?PlatformTransactionOutbox
     {
@@ -65,6 +67,8 @@ final readonly class TransactionOutbox
      * each unless the outbox already has a newer revision (rule R10). One read and one database transaction.
      *
      * @param  list<array{reference: string, revision: int, transaction: TransactionData}>  $transactions
+     *
+     * @internal
      */
     public function confirmed(array $transactions): void
     {
@@ -86,6 +90,8 @@ final readonly class TransactionOutbox
      * already has a newer revision, so the next change of the model goes out with a higher one. It replaces a version
      * still waiting or refused at the same revision or lower, a withdrawal of the system for instance, which the
      * platform refuses after its own change. A reference the outbox never had stays out of it.
+     *
+     * @internal
      */
     public function changedByPlatform(RecordedTransactionData $transaction): void
     {

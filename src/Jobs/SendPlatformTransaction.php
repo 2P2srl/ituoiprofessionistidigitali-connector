@@ -20,6 +20,8 @@ use ITuoiProfessionistiDigitali\Connector\PlatformClient;
  * a contract violation, found by the platform or by the package before the request, or a conflict stop it, with the
  * error kept in the outbox. Once its first registration is confirmed, it sends again the declaration of the record
  * of the person waiting for it (rule R18).
+ *
+ * @internal
  */
 final class SendPlatformTransaction implements ShouldQueue
 {

@@ -368,6 +368,8 @@ firma = hex( HMAC-SHA256( PLATFORM_SIGNING_SECRET, X-Platform-Timestamp + "." + 
 
 La major del pacchetto cambia a ogni rottura del contratto: un campo che sparisce, uno che diventa obbligatorio, una regola più stretta. Le versioni degli schemi di un tipo di evento si aggiungono e non cambiano mai: quelle fissate in `resources/schemas` sono confrontate con il portale da un contract test.
 
+L'API pubblica è quella che il README descrive. Quello che porta `@internal` lo usa solo il pacchetto e può cambiare in una minor, senza avviso: un test lo tiene allineato.
+
 ## Sviluppo
 
 ```bash

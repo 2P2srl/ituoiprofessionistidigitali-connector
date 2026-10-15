@@ -24,6 +24,8 @@ use ITuoiProfessionistiDigitali\Connector\PlatformClient;
  * are retried; a contract violation, found by the platform or by the package before the request, stops it, with
  * the error kept in the outbox. The record is read with validateAndCreate(): one kept before a rule changed, such
  * as a null email, fails as a contract violation instead of in the constructor.
+ *
+ * @internal
  */
 final class SendPlatformProfessional implements ShouldQueue
 {

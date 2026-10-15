@@ -17,6 +17,8 @@ use stdClass;
  * Checks an outgoing envelope against the catalogue before it leaves, as POST /events would (rules E5, E6 and E7).
  *
  * Whether sender and recipient have the typology is known to the platform only.
+ *
+ * @internal
  */
 final class PayloadValidator
 {

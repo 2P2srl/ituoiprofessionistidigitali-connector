@@ -15,6 +15,8 @@ use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
 /**
  * What the jobs of the outboxes share: the retries, the wait for the connection, the refusals and the confirmation
  * of a revision.
+ *
+ * @internal
  */
 trait SendsOutboxRow
 {

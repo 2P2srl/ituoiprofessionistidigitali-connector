@@ -29,6 +29,8 @@ use TypeError;
  *
  * The selection of a counterparty and the withdrawal after the expiry reach the outbox before the listeners: the next
  * change of the model goes out with a revision higher than the one of the platform (rules L4 and L9).
+ *
+ * @internal
  */
 final readonly class WebhookController
 {

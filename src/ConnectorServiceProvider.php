@@ -12,6 +12,11 @@ use ITuoiProfessionistiDigitali\Connector\Console\SendOutboxCommand;
 use ITuoiProfessionistiDigitali\Connector\Events\PlatformEventReceived;
 use ITuoiProfessionistiDigitali\Connector\Listeners\ReplyToPing;
 
+/**
+ * Wires the package into the application: configuration, client, routes, listeners, commands and schedule.
+ *
+ * @internal
+ */
 final class ConnectorServiceProvider extends ServiceProvider
 {
     public function register(): void

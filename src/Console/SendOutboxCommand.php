@@ -19,6 +19,8 @@ use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
  * Sends again the versions left behind: a system not yet active, a platform down for longer than the retries,
  * a declaration of a record waiting for the registration of the transactions to the person.
  * Scheduled every five minutes by the service provider.
+ *
+ * @internal
  */
 final class SendOutboxCommand extends Command
 {
