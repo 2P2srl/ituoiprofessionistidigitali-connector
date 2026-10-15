@@ -94,9 +94,9 @@ final class TransactionData extends Data
             'counterparty' => ['present', Rule::requiredIf($hasCounterparty), Rule::prohibitedIf($isPublication), 'nullable', 'array'],
             'typology' => ['required', 'string', 'regex:/^[a-z][a-z0-9_]*$/'],
             'status' => ['required', Rule::enum(TransactionStatus::class), self::followsActivities($status, $payload['activities'] ?? null)],
-            // R16: kept after the platform gives a counterparty to a published assignment, never in one still invited;
-            // the platform checks the rest
-            'expires_at' => ['present', Rule::requiredIf($isPublication), Rule::prohibitedIf($isInvited), 'nullable', 'after:sent_at'],
+            // R16: kept after the platform gives a counterparty to a published assignment, never in one still invited or
+            // declined, which was born with its counterparty; the platform checks the rest
+            'expires_at' => ['present', Rule::requiredIf($isPublication), Rule::prohibitedIf($isInvited || $status === TransactionStatus::Declined), 'nullable', 'after:sent_at'],
             // Texts of the firm, without data of the client: a published assignment shows them on the platform (rule R6)
             'title' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string', 'max:'.self::MAX_DESCRIPTION_LENGTH],

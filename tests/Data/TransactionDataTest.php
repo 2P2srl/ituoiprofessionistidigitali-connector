@@ -316,6 +316,7 @@ it('refuses what the register would refuse', function (array $body, string $fiel
     'R16 expiry before the sending' => [[...transactionIn('published'), 'expires_at' => '2026-10-01T09:00:00Z'], 'expires_at'],
     'R16 invited with an expiry' => [transaction(['expires_at' => '2026-11-06T18:00:00+01:00']), 'expires_at'],
     'R16 invited to anyone with an expiry' => [transaction(['audience' => 'any', 'expires_at' => '2026-11-06T18:00:00+01:00']), 'expires_at'],
+    'R16 declined with an expiry' => [[...transactionIn('declined'), 'expires_at' => '2026-11-06T18:00:00+01:00'], 'expires_at'],
     'unknown status' => [transaction(['status' => 'rejected']), 'status'],
     'typology in upper case' => [transaction(['typology' => 'Commercialisti']), 'typology'],
     'R6 published without title' => [[...transactionIn('published'), 'title' => null], 'title'],
