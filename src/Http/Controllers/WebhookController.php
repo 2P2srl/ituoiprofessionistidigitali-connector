@@ -9,6 +9,7 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Data\CounterpartySelectedData;
 use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
@@ -22,6 +23,10 @@ use TypeError;
  * The webhook of the system: answers the verification of the platform and hands every other event to the application,
  * from a member or from the platform (rule L6).
  *
+ * An event without sender of a type or version the package does not know comes from a newer platform: it gets a 2xx
+ * and a warning in the log, so the platform does not repeat it for a day (rules W5 and W6), and it never reaches the
+ * application. Its payload is never read.
+ *
  * The selection of a counterparty and the withdrawal after the expiry reach the outbox before the listeners: the next
  * change of the model goes out with a revision higher than the one of the platform (rules L4 and L9).
  */
@@ -32,7 +37,8 @@ final readonly class WebhookController
         try
         {
             $envelope = EnvelopeData::from($request->json()->all());
-            $changed = $envelope->sender === null ? $this->changedByPlatform($envelope) : null;
+            $isUnknown = $envelope->sender === null && !$this->isKnown($envelope);
+            $changed = $envelope->sender === null && !$isUnknown ? $this->changedByPlatform($envelope) : null;
         }
         catch (Exception|TypeError)
         {
@@ -44,9 +50,15 @@ final readonly class WebhookController
             return response()->json(['challenge' => $envelope->payload['challenge'] ?? null]);
         }
 
-        if ($envelope->sender === null && !$envelope->isFromPlatform())
+        if ($isUnknown)
         {
-            return response()->json(['message' => 'Busta non valida.'], 400);
+            Log::warning('Evento del portale di un tipo o di una versione sconosciuti al pacchetto: ignorato. Aggiorna ituoiprofessionistidigitali/connector.', [
+                'event_id' => $envelope->event_id,
+                'type' => $envelope->type,
+                'schema_version' => $envelope->schema_version,
+            ]);
+
+            return response()->json(['message' => 'Tipo di evento sconosciuto: ignorato.'], 202);
         }
 
         if ($changed !== null)
@@ -57,6 +69,15 @@ final readonly class WebhookController
         $events->dispatch(new PlatformEventReceived($envelope));
 
         return response()->noContent();
+    }
+
+    /**
+     * Whether the package reads an event of the platform: a type it sends (rule L6), at a version whose schema this
+     * release of the package fixes.
+     */
+    private function isKnown(EnvelopeData $envelope): bool
+    {
+        return $envelope->isFromPlatform() && is_file(Contract::schemaPath($envelope->type, $envelope->schema_version));
     }
 
     /**

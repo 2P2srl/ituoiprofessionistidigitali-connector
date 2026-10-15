@@ -6,6 +6,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use ITuoiProfessionistiDigitali\Connector\Contract;
@@ -60,10 +61,26 @@ it('W1: answers 400 to a body that is not an envelope', function (string $body):
     'not json' => ['not json'],
     'missing fields' => [json_encode(['event_id' => 'x'])],
     'wrong type' => [json_encode(envelope(['schema_version' => 'one']))],
-    'event of a member without sender' => [json_encode(envelope(['type' => Contract::PONG, 'sender' => null]))],
-    'unknown type without sender' => [json_encode(envelope(['type' => 'transaction.unknown', 'sender' => null]))],
     'selection with a broken payload' => [json_encode(envelope(['type' => Contract::COUNTERPARTY_SELECTED, 'sender' => null, 'payload' => ['transaction' => []]]))],
     'withdrawal with a broken payload' => [json_encode(envelope(['type' => Contract::TRANSACTION_WITHDRAWN, 'sender' => null, 'payload' => ['transaction' => withdrawnTransaction(), 'reason' => 'operator']]))],
+]);
+
+it('W5: answers 2xx to an event without sender of a type or version the package does not know, so the platform does not repeat it', function (string $type, int $version): void {
+    Log::spy();
+
+    deliver($this, json_encode(envelope(['type' => $type, 'schema_version' => $version, 'sender' => null, 'payload' => ['reference' => 'A-1']])))
+        ->assertAccepted()
+        ->assertExactJson(['message' => 'Tipo di evento sconosciuto: ignorato.']);
+
+    Event::assertNotDispatched(PlatformEventReceived::class);
+    Log::shouldHaveReceived('warning')->once()->with(
+        'Evento del portale di un tipo o di una versione sconosciuti al pacchetto: ignorato. Aggiorna ituoiprofessionistidigitali/connector.',
+        ['event_id' => envelope()['event_id'], 'type' => $type, 'schema_version' => $version],
+    );
+})->with([
+    'a newer type of the platform' => ['transaction.unknown', 1],
+    'a newer version of a type of the platform' => [Contract::COUNTERPARTY_SELECTED, 2],
+    'a type of the members' => [Contract::PONG, 1],
 ]);
 
 it('L6: hands the events of the platform, without sender, to the application', function (string $type, array $payload): void {

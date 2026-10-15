@@ -46,6 +46,7 @@ Regole per chi scrive codice che usa `ituoiprofessionistidigitali/connector` in 
   - non conta sull'ordine: usa `occurred_at` e `correlation_id`;
   - ignora i tipi che non gestisce, senza eccezioni.
 - Un'eccezione in un listener sincrono fa rispondere 500 e il portale riprova: va bene solo se il lavoro non è stato salvato.
+- Un evento del portale di un tipo, o di una versione, che il pacchetto non conosce ha 202 e un `warning` nel log, e non arriva ai listener: è il segno che il pacchetto va aggiornato. Non intercettarlo a mano.
 - Gli eventi del portale (`transaction.*`) arrivano con `sender` a `null`: riconoscili con `$envelope->isFromPlatform()` e leggi il payload con il suo DTO. Non mandarli mai con `Platform::send()`: li manda solo il portale (L6).
 
 ## Candidature e scelta della controparte

@@ -169,7 +169,7 @@ final class HandlePlatformEvent implements ShouldQueue
 }
 ```
 
-Gli eventi che genera il portale, quelli delle candidature e della scelta (`transaction.*`), arrivano allo stesso modo, con `sender` a `null` (regola L6): `$envelope->isFromPlatform()` li riconosce. Nel catalogo hanno `sent_by: platform` (`EventTypeData::$sent_by`), e `Platform::send()` li rifiuta prima di mandarli (E5). Il webhook risponde 400 a una busta senza mittente che non sia la verifica o un tipo del portale che il pacchetto conosce.
+Gli eventi che genera il portale, quelli delle candidature e della scelta (`transaction.*`), arrivano allo stesso modo, con `sender` a `null` (regola L6): `$envelope->isFromPlatform()` li riconosce. Nel catalogo hanno `sent_by: platform` (`EventTypeData::$sent_by`), e `Platform::send()` li rifiuta prima di mandarli (E5). Una busta senza mittente di un tipo, o di una versione, che il pacchetto non conosce viene da un portale più recente: il webhook risponde 202, la scrive nel log come `warning` (id, tipo e versione, mai il payload) e non la passa all'applicazione. Così il portale non la ripete per un giorno (W5, W6). Quando compare quel `warning`, aggiorna il pacchetto. Una busta che non si legge, o un evento del portale con il payload rotto, ha ancora 400.
 
 ## Registro delle transazioni
 
