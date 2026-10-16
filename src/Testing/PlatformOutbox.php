@@ -80,6 +80,6 @@ final class PlatformOutbox
      */
     private static function queuedEvents(string $type): Collection
     {
-        return PlatformEventOutbox::query()->where('type', $type)->get()->map(fn (PlatformEventOutbox $row): EnvelopeData => EnvelopeData::from($row->envelope))->values()->toBase();
+        return PlatformEventOutbox::query()->where('type', $type)->get()->map(fn (PlatformEventOutbox $row): EnvelopeData => EnvelopeData::from($row->envelope))->toBase();
     }
 }
