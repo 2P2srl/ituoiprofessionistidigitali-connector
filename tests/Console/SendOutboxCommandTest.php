@@ -7,8 +7,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use ITuoiProfessionistiDigitali\Connector\ConnectorConfig;
 use ITuoiProfessionistiDigitali\Connector\Enums\OutboxStatus;
+use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformEvent;
 use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformProfessional;
 use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformTransaction;
+use ITuoiProfessionistiDigitali\Connector\Models\PlatformEventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformProfessionalOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
 
@@ -50,6 +52,19 @@ it('R18: queues again the declarations still pending', function (): void {
 
     Queue::assertPushed(SendPlatformProfessional::class, fn (SendPlatformProfessional $job): bool => $job->taxCode === 'RSSMRA80A01H501U');
     Queue::assertPushed(SendPlatformProfessional::class, 1);
+});
+
+it('E2: queues again the events still pending', function (): void {
+    Queue::fake();
+    foreach (['0199b6f2-0000-7000-8000-000000000001' => OutboxStatus::Pending, '0199b6f2-0000-7000-8000-000000000002' => OutboxStatus::Sent, '0199b6f2-0000-7000-8000-000000000003' => OutboxStatus::Failed] as $eventId => $status)
+    {
+        PlatformEventOutbox::query()->create(['event_id' => $eventId, 'type' => 'platform.ping', 'envelope' => envelope(['event_id' => $eventId]), 'status' => $status]);
+    }
+
+    $this->artisan('platform:send-outbox')->expectsOutputToContain('Eventi rimessi in coda: 1.')->assertSuccessful();
+
+    Queue::assertPushed(SendPlatformEvent::class, fn (SendPlatformEvent $job): bool => $job->eventId === '0199b6f2-0000-7000-8000-000000000001');
+    Queue::assertPushed(SendPlatformEvent::class, 1);
 });
 
 it('does nothing while the system is not connected', function (): void {

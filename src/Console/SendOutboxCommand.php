@@ -10,14 +10,17 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use ITuoiProfessionistiDigitali\Connector\ConnectorConfig;
 use ITuoiProfessionistiDigitali\Connector\Enums\OutboxStatus;
+use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformEvent;
 use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformProfessional;
 use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformTransaction;
+use ITuoiProfessionistiDigitali\Connector\Models\PlatformEventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformProfessionalOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
 
 /**
  * Sends again the versions left behind: a system not yet active, a platform down for longer than the retries,
- * a declaration of a record waiting for the registration of the transactions to the person.
+ * a declaration of a record waiting for the registration of the transactions to the person, an event not yet
+ * accepted.
  * Scheduled every five minutes by the service provider.
  *
  * @internal
@@ -26,7 +29,7 @@ final class SendOutboxCommand extends Command
 {
     protected $signature = 'platform:send-outbox';
 
-    protected $description = 'Rimanda al portale le versioni delle transazioni e le anagrafiche non ancora confermate';
+    protected $description = 'Rimanda al portale le versioni delle transazioni, le anagrafiche e gli eventi non ancora confermati';
 
     public function handle(ConnectorConfig $config): int
     {
@@ -47,6 +50,10 @@ final class SendOutboxCommand extends Command
         $taxCodes = PlatformProfessionalOutbox::query()->where('status', OutboxStatus::Pending)->pluck('tax_code');
         $this->requeue($taxCodes, static fn (string $taxCode): SendPlatformProfessional => new SendPlatformProfessional($taxCode), $config->queue);
         $this->components->info("Anagrafiche rimesse in coda: {$taxCodes->count()}.");
+
+        $eventIds = PlatformEventOutbox::query()->where('status', OutboxStatus::Pending)->pluck('event_id');
+        $this->requeue($eventIds, static fn (string $eventId): SendPlatformEvent => new SendPlatformEvent($eventId), $config->queue);
+        $this->components->info("Eventi rimessi in coda: {$eventIds->count()}.");
 
         return self::SUCCESS;
     }

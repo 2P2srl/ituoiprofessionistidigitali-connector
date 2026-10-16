@@ -9,12 +9,13 @@ use Illuminate\Validation\ValidationException;
 use ITuoiProfessionistiDigitali\Connector\ConnectorConfig;
 use ITuoiProfessionistiDigitali\Connector\Enums\OutboxStatus;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
+use ITuoiProfessionistiDigitali\Connector\Models\PlatformEventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformProfessionalOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
 
 /**
  * What the jobs of the outboxes share: the retries, the wait for the connection, the refusals and the confirmation
- * of a revision.
+ * of a revision, which the outbox of the events does not have.
  *
  * @internal
  */
@@ -33,7 +34,7 @@ trait SendsOutboxRow
     /**
      * Whether the system is not connected yet: the row waits, with the reason kept.
      */
-    private function waitsForConnection(ConnectorConfig $config, PlatformTransactionOutbox|PlatformProfessionalOutbox $row): bool
+    private function waitsForConnection(ConnectorConfig $config, PlatformTransactionOutbox|PlatformProfessionalOutbox|PlatformEventOutbox $row): bool
     {
         if ($config->isConnected())
         {
@@ -51,7 +52,7 @@ trait SendsOutboxRow
      *
      * @throws PlatformRequestException|ValidationException
      */
-    private function refused(PlatformTransactionOutbox|PlatformProfessionalOutbox $row, PlatformRequestException|ValidationException $exception, bool $isFinal): void
+    private function refused(PlatformTransactionOutbox|PlatformProfessionalOutbox|PlatformEventOutbox $row, PlatformRequestException|ValidationException $exception, bool $isFinal): void
     {
         $errors = $exception instanceof ValidationException ? $exception->errors() : $exception->errors;
 

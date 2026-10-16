@@ -20,6 +20,7 @@ const PUBLIC_API = [
     'Events\\',
     'Exceptions\\',
     'Facades\\',
+    'Models\\PlatformEventOutbox',
     'Models\\PlatformProfessionalOutbox',
     'Models\\PlatformTransactionOutbox',
     'Outbox\\',
