@@ -266,6 +266,7 @@ DB::transaction(function () use ($busta, $allegato): void {
 
 - `queue()` legge lo SHA-256 di ogni file subito, e salva i file in `platform_event_outbox_files` (una tabella nuova: `php artisan migrate`). I file della busta devono essere esattamente i `ref` passati, altrimenti `LogicException`.
 - Il job carica i file e manda l'evento con gli id del portale al posto dei `ref`, nel payload e in `files`. Dopo un tentativo che può essere arrivato chiede lo stato dei file (F5): `sent` vuol dire che l'evento è arrivato, e rimanda la stessa busta; `expired` li ricarica con un `upload_id` nuovo.
+- Ricevendo, il pacchetto fa tutto da solo. Un evento con file ha subito il suo 2xx dal webhook, e un job in coda (`ReceivePlatformFiles`, uno per `event_id`) scarica ogni file in `platform-files/{event_id}/{file_id}` sul disco `PLATFORM_FILES_DISK`, lo verifica sullo SHA-256 della busta e lo conferma. Solo dopo lancia `PlatformEventReceived`, con `$event->files`: un `ReceivedFileData` per file, con `disk`, `path`, nome, tipo e SHA-256. Il listener sposta i file nello storage del sistema. Un file che il portale non ha più arriva con `isMissing()` e `path` a `null`: chiedilo di nuovo allo studio che lo ha mandato.
 - Un file cambiato o sparito dopo `queue()` porta la riga in `failed`, con il percorso in `last_error`: il file va mandato con un evento nuovo. Anche un file rifiutato dal portale (422, per esempio il tipo) è `failed`. La quota piena (429, F11) rimette l'evento in coda dopo `Retry-After`.
 
 ## Registro delle transazioni

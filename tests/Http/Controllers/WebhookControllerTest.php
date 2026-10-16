@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Events\PlatformEventReceived;
+use ITuoiProfessionistiDigitali\Connector\Jobs\ReceivePlatformFiles;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
 use ITuoiProfessionistiDigitali\Connector\Signature\WebhookSignature;
 use ITuoiProfessionistiDigitali\Connector\Tests\TestCase;
@@ -117,3 +118,14 @@ it('L4 and L9: keeps the selection or the withdrawal of the platform in the outb
     'selection' => [Contract::COUNTERPARTY_SELECTED, 'counterpartySelected', 'accepted'],
     'withdrawal' => [Contract::TRANSACTION_WITHDRAWN, 'transactionWithdrawn', 'withdrawn'],
 ]);
+
+it('F8: answers 2xx to an event with files and hands it to the application only after the download, in the queue', function (): void {
+    Queue::fake();
+    $files = [['id' => '0199c1a0-0000-7000-8000-000000000001', 'name' => 'Guida.pdf', 'media_type' => 'application/pdf', 'size' => 10, 'sha256' => str_repeat('a', 64), 'available_until' => '2026-11-15T10:00:00Z']];
+
+    deliver($this, json_encode(envelope(['type' => Contract::ACTIVITIES_ASSIGNED, 'payload' => activitiesAssigned(), 'files' => $files])))
+        ->assertNoContent();
+
+    Event::assertNotDispatched(PlatformEventReceived::class);
+    Queue::assertPushed(ReceivePlatformFiles::class, fn (ReceivePlatformFiles $job): bool => $job->envelope['event_id'] === envelope()['event_id'] && $job->uniqueId() === envelope()['event_id']);
+});

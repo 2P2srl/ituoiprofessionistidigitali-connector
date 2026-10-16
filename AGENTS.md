@@ -38,6 +38,7 @@ Regole per chi scrive codice che usa `ituoiprofessionistidigitali/connector` in 
 - Un 409 vuol dire che hai riusato un `event_id` con un contenuto diverso: è un errore nel codice, non qualcosa da ritentare.
 - Manda gli eventi fra studi con `resolve(EventOutbox::class)->queue($busta)`, nella stessa transazione del database del cambio che li produce, non con `Platform::send()` a mano: l'outbox salva la busta, la manda dopo il commit e la ritenta identica. Una riga `failed` di `platform_event_outbox` è un errore nel codice: leggi `last_error`.
 - I file di un evento passano dall'outbox: `OutgoingFileData::make($disco, $percorso, $nome, $tipo)`, cita il suo `ref` nel payload e passa i file a `EventOutbox::queue($busta, $file)`. Non chiamare `Platform::uploadFile()` a mano per un evento in outbox, e non cambiare un file dopo `queue()`: la riga diventa `failed`.
+- I file ricevuti li scarica, verifica e conferma il pacchetto prima del listener: leggili da `$event->files` (`ReceivedFileData`, `disk` e `path`) e spostali nello storage del sistema. Non chiamare `Platform::downloadFile()` né `confirmFile()` per un evento del webhook. Un file con `isMissing()` va chiesto di nuovo al mittente. Non scrivere mai nel log il nome o il contenuto di un file.
 - Nei test di ogni action che manda un evento verifica la busta con `PlatformOutbox::assertEventQueued($tipo, $callback)`, e con `assertEventNotQueued($tipo)` che non parta.
 
 ## Ricevere eventi

@@ -10,12 +10,14 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use ITuoiProfessionistiDigitali\Connector\ConnectorConfig;
 use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Data\CounterpartySelectedData;
 use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\RecordedTransactionData;
 use ITuoiProfessionistiDigitali\Connector\Data\TransactionWithdrawnData;
 use ITuoiProfessionistiDigitali\Connector\Events\PlatformEventReceived;
+use ITuoiProfessionistiDigitali\Connector\Jobs\ReceivePlatformFiles;
 use ITuoiProfessionistiDigitali\Connector\Outbox\TransactionOutbox;
 use TypeError;
 
@@ -30,11 +32,14 @@ use TypeError;
  * The selection of a counterparty and the withdrawal after the expiry reach the outbox before the listeners: the next
  * change of the model goes out with a revision higher than the one of the platform (rules L4 and L9).
  *
+ * An event with files gets its 2xx at once and reaches the application from the queue, after its files are saved
+ * and confirmed (rule F8).
+ *
  * @internal
  */
 final readonly class WebhookController
 {
-    public function __invoke(Request $request, Dispatcher $events, TransactionOutbox $outbox): JsonResponse|Response
+    public function __invoke(Request $request, Dispatcher $events, TransactionOutbox $outbox, ConnectorConfig $config): JsonResponse|Response
     {
         try
         {
@@ -66,6 +71,15 @@ final readonly class WebhookController
         if ($changed !== null)
         {
             $outbox->changedByPlatform($changed);
+        }
+
+        if ($envelope->fileReferences() !== [])
+        {
+            /** @var array<string, mixed> $delivered */
+            $delivered = $envelope->toArray();
+            dispatch(new ReceivePlatformFiles($delivered))->onQueue($config->queue);
+
+            return response()->noContent();
         }
 
         $events->dispatch(new PlatformEventReceived($envelope));
