@@ -16,6 +16,7 @@ use ITuoiProfessionistiDigitali\Connector\Enums\SystemStatus;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformNotConfiguredException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
 use ITuoiProfessionistiDigitali\Connector\Facades\Platform;
+use ITuoiProfessionistiDigitali\Connector\PlatformClient;
 
 const TOKEN_URL = 'platform.test/oauth/token';
 
@@ -119,7 +120,7 @@ it('A4: says the credentials are wrong when the token is refused', function (arr
 
 it('does not call the platform without url and credentials', function (): void {
     $this->app->instance(ConnectorConfig::class, new ConnectorConfig);
-    $this->app->forgetInstance(ITuoiProfessionistiDigitali\Connector\PlatformClient::class);
+    $this->app->forgetInstance(PlatformClient::class);
     Platform::clearResolvedInstances();
 
     Platform::system();
@@ -281,7 +282,7 @@ it('E7: checks the payload on the cached catalogue before sending', function ():
 
 it('E7: leaves the payload to the platform when the local validation is off', function (): void {
     $this->app->instance(ConnectorConfig::class, ConnectorConfig::fromArray([...config('platform'), 'validate_payloads' => false]));
-    $this->app->forgetInstance(ITuoiProfessionistiDigitali\Connector\PlatformClient::class);
+    $this->app->forgetInstance(PlatformClient::class);
     Platform::clearResolvedInstances();
     Http::fake([...token(), 'platform.test/api/v1/events' => Http::response([
         'message' => 'Il payload non rispetta lo schema.',
@@ -353,6 +354,40 @@ it('retries server errors and connection failures, never contract violations', f
 
     Http::assertSentCount(5);
 });
+
+it('T7: repeats a request after the seconds of Retry-After', function (): void {
+    Http::fake([
+        ...token(),
+        'platform.test/api/v1/typologies' => Http::sequence()->push(['message' => 'Troppe richieste.'], 429, ['Retry-After' => '3'])->push(['data' => []]),
+    ]);
+
+    expect(Platform::typologies())->toBe([]);
+
+    Sleep::assertSlept(fn (Carbon\CarbonInterval $duration): bool => (int) $duration->totalSeconds === 3);
+    Http::assertSentCount(3);
+});
+
+it('T7: leaves a wait longer than the request can afford to the caller, with the seconds of Retry-After', function (?string $retryAfter, ?int $seconds): void {
+    Http::fake([...token(), 'platform.test/api/v1/typologies' => Http::response(['message' => 'Quota piena.'], 429, $retryAfter === null ? [] : ['Retry-After' => $retryAfter])]);
+
+    try
+    {
+        Platform::typologies();
+        $this->fail('The platform should answer 429.');
+    }
+    catch (PlatformRequestException $exception)
+    {
+        expect($exception->isThrottled())->toBeTrue()
+            ->and($exception->retryAfter)->toBe($seconds)
+            ->and($exception->isContractViolation())->toBeFalse();
+    }
+
+    Http::assertSentCount(2);
+})->with([
+    'over the longest wait' => ['120', 120],
+    'without Retry-After' => [null, PlatformClient::DEFAULT_RETRY_AFTER_SECONDS],
+    'not a number of seconds' => ['Wed, 21 Oct 2026 07:28:00 GMT', PlatformClient::DEFAULT_RETRY_AFTER_SECONDS],
+]);
 
 it('reads an answer without data as empty', function (): void {
     Http::fake([...token(), 'platform.test/api/v1/typologies' => Http::response(['data' => 'nothing'])]);

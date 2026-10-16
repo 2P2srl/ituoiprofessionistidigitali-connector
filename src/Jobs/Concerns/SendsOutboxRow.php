@@ -47,8 +47,8 @@ trait SendsOutboxRow
     }
 
     /**
-     * Keeps a refusal, of the platform or of the package before any request: a final one stops the row, any other
-     * goes back to the queue to be retried.
+     * Keeps a refusal, of the platform or of the package before any request: a final one stops the row, a 429 goes
+     * back to the queue after its Retry-After (rule T7), any other is retried with the backoff.
      *
      * @throws PlatformRequestException|ValidationException
      */
@@ -60,6 +60,13 @@ trait SendsOutboxRow
             'status' => $isFinal ? OutboxStatus::Failed : OutboxStatus::Pending,
             'last_error' => mb_trim($exception->getMessage().' '.json_encode($errors, JSON_UNESCAPED_UNICODE)),
         ]);
+
+        if ($exception instanceof PlatformRequestException && $exception->retryAfter !== null)
+        {
+            $this->release($exception->retryAfter);
+
+            return;
+        }
 
         if (!$isFinal)
         {

@@ -63,7 +63,17 @@ use Throwable;
  */
 final readonly class PlatformClient
 {
+    /**
+     * The seconds of a 429 without a readable Retry-After (rule T7).
+     */
+    public const int DEFAULT_RETRY_AFTER_SECONDS = 60;
+
     private const string CATALOGUE_CACHE_KEY = 'platform.event-types';
+
+    /**
+     * The longest Retry-After the client waits by itself; a longer one is the caller's (rule T7).
+     */
+    private const int MAX_WAIT_SECONDS = 10;
 
     public function __construct(
         private Http $http,
@@ -470,6 +480,24 @@ final readonly class PlatformClient
     }
 
     /**
+     * @phpstan-assert-if-true RequestException $exception
+     */
+    private static function isThrottled(mixed $exception): bool
+    {
+        return $exception instanceof RequestException && $exception->response->status() === 429;
+    }
+
+    /**
+     * The seconds of Retry-After; a date or no header count as DEFAULT_RETRY_AFTER_SECONDS.
+     */
+    private static function retryAfter(Response $response): int
+    {
+        $seconds = $response->header('Retry-After');
+
+        return ctype_digit($seconds) ? (int) $seconds : self::DEFAULT_RETRY_AFTER_SECONDS;
+    }
+
+    /**
      * The only field a 422 refused, if it refused just one.
      */
     private function refusedOn(PlatformRequestException $exception): ?string
@@ -612,9 +640,10 @@ final readonly class PlatformClient
             ->acceptJson()
             ->retry(
                 times: $this->config->retries + 1,
-                sleepMilliseconds: 200,
+                sleepMilliseconds: static fn (int $attempt, mixed $exception): int => self::isThrottled($exception) ? self::retryAfter($exception->response) * 1000 : 200,
                 when: static fn (Throwable $exception): bool => $exception instanceof ConnectionException
-                    || ($exception instanceof RequestException && $exception->response->serverError()),
+                    || ($exception instanceof RequestException && $exception->response->serverError())
+                    || (self::isThrottled($exception) && self::retryAfter($exception->response) <= self::MAX_WAIT_SECONDS),
                 throw: false,
             );
     }
@@ -689,6 +718,7 @@ final readonly class PlatformClient
             reason: is_string($reason) ? SystemStatus::tryFrom($reason) : null,
             existingEvent: is_array($existing) && $path === 'events' ? AcceptedEventData::from($existing) : null,
             existingTransaction: is_array($existing) && str_starts_with($path, 'transactions/') ? RecordedTransactionData::from($existing) : null,
+            retryAfter: $response->status() === 429 ? self::retryAfter($response) : null,
         );
     }
 

@@ -137,3 +137,18 @@ it('does nothing for an event already sent, failed or unknown', function (Outbox
 
     expect($this->row->refresh()->attempts)->toBe(0);
 })->with([OutboxStatus::Sent, OutboxStatus::Failed]);
+
+it('T7: puts a throttled event back in the queue after the seconds of Retry-After', function (): void {
+    withToken([
+        'platform.test/api/v1/event-types' => Http::response(['data' => catalogue()]),
+        'platform.test/api/v1/events' => Http::response(['message' => 'Troppe richieste.'], 429, ['Retry-After' => '120']),
+    ]);
+    $job = new SendPlatformEvent(envelope()['event_id'])->withFakeQueueInteractions();
+
+    $job->handle(resolve(PlatformClient::class), resolve(ConnectorConfig::class));
+
+    $job->assertReleased(delay: 120);
+    expect($this->row->refresh())
+        ->status->toBe(OutboxStatus::Pending)
+        ->last_error->toContain('Troppe richieste.');
+});

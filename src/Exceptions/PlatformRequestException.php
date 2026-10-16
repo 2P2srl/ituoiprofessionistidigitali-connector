@@ -25,6 +25,7 @@ final class PlatformRequestException extends PlatformException
         public readonly ?SystemStatus $reason = null,
         public readonly ?AcceptedEventData $existingEvent = null,
         public readonly ?RecordedTransactionData $existingTransaction = null,
+        public readonly ?int $retryAfter = null,
     ) {
         parent::__construct($message);
     }
@@ -37,5 +38,13 @@ final class PlatformRequestException extends PlatformException
     public function isConflict(): bool
     {
         return $this->status === 409;
+    }
+
+    /**
+     * A 429 longer than the client waits by itself: repeat the request after retryAfter seconds (rule T7).
+     */
+    public function isThrottled(): bool
+    {
+        return $this->status === 429;
     }
 }

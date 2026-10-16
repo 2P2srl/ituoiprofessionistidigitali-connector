@@ -128,6 +128,7 @@ arch('assignments reach the register of the platform')
 - `401`: il client rinnova il token da solo. Non mettere in cache il token a mano.
 - `403`: leggi `->reason` (`pending`, `suspended`, `revoked`). È una questione di collegamento, da sistemare con l'operatore del portale, non nel codice.
 - `5xx` ed errori di rete: il client riprova da solo qualche volta; dopo, la stessa busta si può rimandare.
+- `429` (T7): il client aspetta da solo un `Retry-After` breve e ripete; uno più lungo è una `PlatformRequestException` con `isThrottled()` e i secondi in `->retryAfter`, da ripetere dopo quel tempo. Le outbox lo fanno da sole: rimettono il job in coda dopo `Retry-After`.
 
 ## Segreti e configurazione
 
