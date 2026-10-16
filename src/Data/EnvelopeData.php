@@ -103,7 +103,12 @@ final class EnvelopeData extends Data
      */
     public function fileIds(): array
     {
-        return array_map(static fn (mixed $file): string => is_array($file) && is_string($file['id'] ?? null) ? $file['id'] : (is_string($file) ? $file : ''), $this->files ?? []);
+        return array_map(static fn (mixed $file): string => match (true)
+        {
+            is_string($file) => $file,
+            is_string($file['id'] ?? null) => $file['id'],
+            default => '',
+        }, $this->files ?? []);
     }
 
     /**
@@ -168,7 +173,8 @@ final class EnvelopeData extends Data
         $wire = $this->toArray();
         $wire['payload'] = $this->payload === [] ? new stdClass : $this->payload;
         unset($wire['files']);
+        $files = $this->fileIds();
 
-        return $this->fileIds() === [] ? $wire : [...$wire, 'files' => $this->fileIds()];
+        return $files === [] ? $wire : [...$wire, 'files' => $files];
     }
 }

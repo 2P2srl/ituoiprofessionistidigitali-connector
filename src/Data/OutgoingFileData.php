@@ -11,8 +11,6 @@ use Spatie\LaravelData\Data;
  * A file of the system to send with an event through the outbox. Cite its ref in the payload and in the files of the
  * envelope, where the schema wants the id of a file: the outbox uploads it and puts the id of the platform in its
  * place before sending the event (rules E12 and F5).
- *
- * @param  string  $ref  A UUID chosen by the package, that stands for the file until its upload.
  */
 final class OutgoingFileData extends Data
 {
