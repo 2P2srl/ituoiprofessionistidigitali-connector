@@ -20,6 +20,8 @@ use ITuoiProfessionistiDigitali\Connector\Data\ApplicationPage;
 use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\EventTypeData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListedMemberData;
+use ITuoiProfessionistiDigitali\Connector\Data\ListingData;
+use ITuoiProfessionistiDigitali\Connector\Data\ListingPage;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberData;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberPage;
 use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalRecordData;
@@ -35,6 +37,7 @@ use ITuoiProfessionistiDigitali\Connector\Enums\Audience;
 use ITuoiProfessionistiDigitali\Connector\Enums\SystemStatus;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationNotSelectableException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ConcurrentMemberSyncException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\ListingNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberEmailsRejectedException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberNotAccessibleException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformException;
@@ -352,6 +355,41 @@ final readonly class PlatformClient
         $this->outbox->changedByPlatform($transaction);
 
         return $transaction;
+    }
+
+    /**
+     * GET /listings: the published assignments the members of the system may apply to, open to firms, of principals
+     * of other systems, the most recent first (rule L1). The principal stays anonymous but for its seat (rule L7).
+     */
+    public function listings(?string $typology = null, ?int $perPage = null, ?string $cursor = null): ListingPage
+    {
+        $response = $this->request('GET', 'listings', $this->query([
+            'typology' => $typology,
+            'per_page' => $perPage,
+            'cursor' => $cursor,
+        ]));
+
+        return new ListingPage(
+            listings: array_map(ListingData::from(...), $this->list($response)),
+            nextCursor: $this->cursor($response, 'next_cursor'),
+        );
+    }
+
+    /**
+     * GET /listings/{id}: a listing still visible to the system (rule L1).
+     *
+     * @throws ListingNotFoundException
+     */
+    public function listing(string $listingId): ListingData
+    {
+        try
+        {
+            return ListingData::from($this->data($this->request('GET', 'listings/'.rawurlencode($listingId))));
+        }
+        catch (PlatformRequestException $exception)
+        {
+            throw $exception->status === 404 ? new ListingNotFoundException($listingId) : $exception;
+        }
     }
 
     /**

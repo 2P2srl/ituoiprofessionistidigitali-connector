@@ -10,6 +10,8 @@ use ITuoiProfessionistiDigitali\Connector\Data\AccessLinkData;
 use ITuoiProfessionistiDigitali\Connector\Data\ApplicationPage;
 use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\EventTypeData;
+use ITuoiProfessionistiDigitali\Connector\Data\ListingData;
+use ITuoiProfessionistiDigitali\Connector\Data\ListingPage;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberData;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberPage;
 use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalRecordData;
@@ -32,6 +34,8 @@ use ITuoiProfessionistiDigitali\Connector\PlatformClient;
  * @method static void declareProfessional(string $taxCode, ProfessionalRecordData $record)
  * @method static ApplicationPage applications(string $reference, ?ApplicationStatus $status = null, ?int $perPage = null, ?string $cursor = null)
  * @method static RecordedTransactionData selectApplication(string $reference, string $applicationId)
+ * @method static ListingPage listings(?string $typology = null, ?int $perPage = null, ?string $cursor = null)
+ * @method static ListingData listing(string $listingId)
  *
  * @see PlatformClient
  */
