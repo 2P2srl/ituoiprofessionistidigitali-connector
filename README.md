@@ -189,6 +189,37 @@ final class HandlePlatformEvent implements ShouldQueue
 
 Gli eventi che genera il portale, quelli delle candidature e della scelta (`transaction.*`), arrivano allo stesso modo, con `sender` a `null` (regola L6): `$envelope->isFromPlatform()` li riconosce. Nel catalogo hanno `sent_by: platform` (`EventTypeData::$sent_by`), e `Platform::send()` li rifiuta prima di mandarli (E5). Una busta senza mittente di un tipo, o di una versione, che il pacchetto non conosce viene da un portale più recente: il webhook risponde 202, la scrive nel log come `warning` (id, tipo e versione, mai il payload) e non la passa all'applicazione. Così il portale non la ripete per un giorno (W5, W6). Quando compare quel `warning`, aggiorna il pacchetto. Una busta che non si legge, o un evento del portale con il payload rotto, ha ancora 400.
 
+### Eventi fra studi
+
+Scelto uno studio, il portale manda `transaction.assignment_received` al sistema dello studio (`AssignmentReceivedData`): la transazione accettata, con l'aderente come controparte, e il committente (`PrincipalData`), che si fa conoscere solo adesso. La transazione è del committente: il sistema dello studio non la registra.
+
+Da lì i due studi si parlano con tre tipi del catalogo, sempre con `correlation_id` uguale all'id della transazione e la sua tipologia (E13):
+
+| Tipo | Payload | Chi lo manda |
+| --- | --- | --- |
+| `coworking.contract_details` | `ContractDetailsData`: lo studio (`PartyData`, con la sede in `AddressData`) e chi firma (`SignatoryData`) | Tutti e due, subito dopo la scelta |
+| `coworking.activities_assigned` | `ActivitiesAssignedData`: i processi (`AssignedProcessData`) col cliente finale (`FinalClientData`), le attività (`AssignedActivityData`) e le guide (`GuideData`) | Il committente, dopo la firma dei documenti del coworking |
+| `coworking.activity_status` | `ActivityStatusData`: un'attività `completed` o `reopened` (`ActivityStatusChange`), con l'istante | Lo studio scelto |
+
+```php
+use ITuoiProfessionistiDigitali\Connector\Data\ActivityStatusData;
+use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
+
+$busta = ActivityStatusData::validateAndCreate([
+    'transaction' => ['id' => $transazione->id],
+    'activity' => $riga->reference,
+    'status' => 'completed',
+    'occurred_at' => now()->format(Contract::DATE_FORMAT),
+])->toEnvelope(sender: $mioAderente, recipient: $committente->id, typology: $transazione->typology);
+
+resolve(EventOutbox::class)->queue($busta);
+```
+
+- `toEnvelope()` controlla il payload sullo schema del pacchetto prima di costruire la busta: fuori schema è una `PlatformRequestException` 422, come la darebbe il portale.
+- `validateAndCreate()` controlla anche il carattere di controllo di partita IVA e codici fiscali (M4) e il cellulare in E.164.
+- In `coworking.activities_assigned` ogni processo porta il `process.reference` delle sue attività nella transazione (K1): lo studio le raggruppa come il committente.
+- Ricevendoli, leggi il payload con il DTO del tipo: `ContractDetailsData::from($envelope->payload)`.
+
 ## Registro delle transazioni
 
 Ogni incarico inviato si registra sul portale quando nasce, e poi a ogni cambio (regola R9). Ogni PUT è la fotografia completa della transazione, quindi il portale accetta la prima registrazione in qualunque stato, purché coerente con le sue date e con le sue attività. Lo stesso dato copre i due casi:

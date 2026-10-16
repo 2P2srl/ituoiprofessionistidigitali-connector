@@ -46,16 +46,6 @@ it('R6: fixes a valid JSON Schema 2020-12 for the description of an activity, wi
         ->and(new Validator()->validate($withText, $schema)->isValid())->toBeFalse();
 });
 
-/**
- * Whether a payload matches the schema of version 1 of an event type, fixed in the package.
- */
-function matchesSchema(string $type, array $payload): bool
-{
-    $schema = json_decode((string) file_get_contents(Contract::schemaPath($type, 1)));
-
-    return new Validator()->validate(json_decode((string) json_encode($payload)), $schema)->isValid();
-}
-
 it('C4 and L6: fixes a valid JSON Schema 2020-12 for every event of the platform, accepting what it sends', function (string $type, array $payload): void {
     $schema = json_decode((string) file_get_contents(Contract::schemaPath($type, 1)));
 

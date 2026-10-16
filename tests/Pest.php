@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Http;
 use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Tests\TestCase;
+use Opis\JsonSchema\Validator;
 
 pest()->extend(TestCase::class)->in(__DIR__);
 
@@ -345,4 +346,14 @@ function platformAnsweringProfessionals(int $status, array $body = []): void
     withToken([
         'platform.test/api/v1/professionals/*' => Http::response($status === 204 ? null : $body, $status),
     ]);
+}
+
+/**
+ * Whether a payload matches the schema of version 1 of an event type, fixed in the package.
+ */
+function matchesSchema(string $type, array $payload): bool
+{
+    $schema = json_decode((string) file_get_contents(Contract::schemaPath($type, 1)));
+
+    return new Validator()->validate(json_decode((string) json_encode($payload)), $schema)->isValid();
 }

@@ -67,6 +67,13 @@ Regole per chi scrive codice che usa `ituoiprofessionistidigitali/connector` in 
 - Un incarico `published` rimasto senza scelta lo ritira anche il portale, alcuni giorni dopo `expires_at` (L9): non contare su un numero fisso di giorni, lo configura l'operatore del portale. Arriva `transaction.withdrawn` (`TransactionWithdrawnData`, `reason` `WithdrawalReason::Expired`), solo per il ritiro del portale. Il listener è in coda e idempotente sull'`event_id` e sulla `reference`: se l'invio è ancora pubblicato lo ritira come un ritiro a mano, con il `closed_at` dell'evento, altrimenti non fa nulla. Non rispondere con un `PUT`: l'outbox si allinea da sola alla revisione del portale, prima dei listener, come per la scelta.
 - Una riga dell'outbox `failed` per un 409 su un ritiro del sistema, mentre il portale aveva già ritirato, è l'unico `failed` che non è un errore nel codice: la sistema l'evento `transaction.withdrawn`.
 
+## Eventi fra studi
+
+- Il sistema dello studio scelto riceve `transaction.assignment_received` (`AssignmentReceivedData`), con il committente rivelato (`PrincipalData`): crea lì quello che serve allo studio, idempotente sull'`event_id` e sulla transazione. Non registrare quella transazione: è del committente.
+- `coworking.contract_details`, `coworking.activities_assigned` e `coworking.activity_status` si costruiscono con il loro DTO e `->toEnvelope($mittente, $destinatario, $tipologia)`, che mette `correlation_id` all'id della transazione e controlla lo schema; poi `EventOutbox::queue()`. Mai la busta a mano.
+- `activities_assigned` lo manda solo il committente, dopo la firma; `activity_status` solo lo studio scelto; `contract_details` tutti e due (E13). Il committente riporta lo stato delle attività nei suoi `PUT`: lo studio scelto non registra nulla.
+- Il cliente finale (`FinalClientData`) va solo in `activities_assigned`, dopo la firma dei documenti del coworking: mai prima, mai in un altro evento.
+
 ## Collegamento
 
 - Senza `PLATFORM_URL`, `PLATFORM_CLIENT_ID` e `PLATFORM_CLIENT_SECRET` il sistema non è collegato: il client lancia `PlatformNotConfiguredException`. Controlla prima con `resolve(ConnectorConfig::class)->isConnected()` e spegni la funzione, invece di romperla.
