@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://ituoiprofessionistidigitali.it/contract/event-types/transaction.counterparty_selected/1.json",
     "title": "transaction.counterparty_selected v1",
-    "description": "La scelta della controparte di un incarico pubblicato: la transazione accettata, la candidatura scelta e i recapiti della persona. La manda solo il portale, al sistema del committente, anche quando la scelta l'ha fatta lui.",
+    "description": "La scelta della controparte di un incarico pubblicato: la transazione accettata, la candidatura scelta e, per una persona, il cellulare. La manda solo il portale, al sistema del committente, anche quando la scelta l'ha fatta lui.",
     "type": "object",
     "properties": {
         "transaction": {
@@ -24,6 +24,7 @@
                 "audience": {
                     "enum": [
                         "person",
+                        "member",
                         "any"
                     ]
                 },
@@ -31,7 +32,14 @@
                     "$ref": "#/$defs/uuid"
                 },
                 "counterparty": {
-                    "$ref": "#/$defs/person"
+                    "oneOf": [
+                        {
+                            "$ref": "#/$defs/person"
+                        },
+                        {
+                            "$ref": "#/$defs/member"
+                        }
+                    ]
                 },
                 "typology": {
                     "type": "string",
@@ -146,11 +154,11 @@
                     "$ref": "#/$defs/datetime"
                 },
                 "terms_accepted_at": {
-                    "description": "Il consenso del professionista alle condizioni dell'incarico.",
+                    "description": "Il consenso di chi si candida alle condizioni dell'incarico.",
                     "$ref": "#/$defs/datetime"
                 },
                 "accepted_revision": {
-                    "description": "La revisione della transazione di cui il professionista ha accettato le condizioni.",
+                    "description": "La revisione della transazione di cui chi si candida ha accettato le condizioni.",
                     "type": "integer",
                     "minimum": 1
                 },
@@ -173,19 +181,26 @@
             "additionalProperties": false
         },
         "contact": {
-            "description": "I recapiti della persona scelta che non fanno parte della controparte.",
-            "type": "object",
-            "properties": {
-                "mobile": {
-                    "description": "Il cellulare, in formato E.164.",
-                    "type": "string",
-                    "pattern": "^\\+[1-9][0-9]{6,14}$"
+            "description": "I recapiti della persona scelta che non fanno parte della controparte; null per uno studio, che si scambia i dati con coworking.contract_details.",
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "mobile": {
+                            "description": "Il cellulare, in formato E.164.",
+                            "type": "string",
+                            "pattern": "^\\+[1-9][0-9]{6,14}$"
+                        }
+                    },
+                    "required": [
+                        "mobile"
+                    ],
+                    "additionalProperties": false
+                },
+                {
+                    "type": "null"
                 }
-            },
-            "required": [
-                "mobile"
-            ],
-            "additionalProperties": false
+            ]
         }
     },
     "required": [
@@ -218,38 +233,15 @@
             "pattern": "^[A-Z]{2}$"
         },
         "applicant": {
-            "description": "Il candidato, senza codice fiscale, email, partita IVA e cellulare, che arrivano solo con la scelta.",
-            "type": "object",
-            "properties": {
-                "type": {
-                    "const": "person"
+            "description": "Il candidato: un professionista o uno studio.",
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/person_applicant"
                 },
-                "first_name": {
-                    "$ref": "#/$defs/name"
-                },
-                "last_name": {
-                    "$ref": "#/$defs/name"
-                },
-                "municipality": {
-                    "$ref": "#/$defs/name"
-                },
-                "province": {
-                    "$ref": "#/$defs/province"
-                },
-                "tax_code_verified": {
-                    "description": "Se il codice fiscale è stato verificato; altrimenti è quello dichiarato dal professionista, con il solo controllo formale.",
-                    "type": "boolean"
+                {
+                    "$ref": "#/$defs/member_applicant"
                 }
-            },
-            "required": [
-                "type",
-                "first_name",
-                "last_name",
-                "municipality",
-                "province",
-                "tax_code_verified"
-            ],
-            "additionalProperties": false
+            ]
         },
         "person": {
             "description": "La controparte persona, con l'anagrafica del professionista al momento della scelta. Il sistema la rimanda identica a ogni revisione.",
@@ -288,6 +280,110 @@
                 },
                 "province": {
                     "$ref": "#/$defs/province"
+                }
+            },
+            "required": [
+                "type",
+                "member_id",
+                "tax_code",
+                "first_name",
+                "last_name",
+                "email",
+                "vat_number",
+                "municipality",
+                "province"
+            ],
+            "additionalProperties": false
+        },
+        "person_applicant": {
+            "description": "Il professionista candidato, senza codice fiscale, email, partita IVA e cellulare, che arrivano solo con la scelta.",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "const": "person"
+                },
+                "first_name": {
+                    "$ref": "#/$defs/name"
+                },
+                "last_name": {
+                    "$ref": "#/$defs/name"
+                },
+                "municipality": {
+                    "$ref": "#/$defs/name"
+                },
+                "province": {
+                    "$ref": "#/$defs/province"
+                },
+                "tax_code_verified": {
+                    "description": "Se il codice fiscale è stato verificato; altrimenti è quello dichiarato dal professionista, con il solo controllo formale.",
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "type",
+                "first_name",
+                "last_name",
+                "municipality",
+                "province",
+                "tax_code_verified"
+            ],
+            "additionalProperties": false
+        },
+        "member_applicant": {
+            "description": "Lo studio candidato: denominazione e sede. L'id dell'aderente arriva solo con la scelta.",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "const": "member"
+                },
+                "name": {
+                    "$ref": "#/$defs/name"
+                },
+                "municipality": {
+                    "$ref": "#/$defs/name"
+                },
+                "province": {
+                    "$ref": "#/$defs/province"
+                }
+            },
+            "required": [
+                "type",
+                "name",
+                "municipality",
+                "province"
+            ],
+            "additionalProperties": false
+        },
+        "member": {
+            "description": "La controparte aderente, lo studio scelto. Il sistema la rimanda identica a ogni revisione.",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "const": "member"
+                },
+                "member_id": {
+                    "$ref": "#/$defs/uuid"
+                },
+                "tax_code": {
+                    "type": "null"
+                },
+                "first_name": {
+                    "type": "null"
+                },
+                "last_name": {
+                    "type": "null"
+                },
+                "email": {
+                    "type": "null"
+                },
+                "vat_number": {
+                    "type": "null"
+                },
+                "municipality": {
+                    "type": "null"
+                },
+                "province": {
+                    "type": "null"
                 }
             },
             "required": [

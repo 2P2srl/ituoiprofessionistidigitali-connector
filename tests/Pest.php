@@ -80,7 +80,7 @@ function activity(array $overrides = []): array
         'minutes_worked' => null,
         'status' => 'open',
         'closed_at' => null,
-        'description' => ['process' => ['name' => 'Contabilità ordinaria'], 'activity' => ['name' => 'Registrazione fatture'], 'deadline' => '2026-11-30'],
+        'description' => ['process' => ['reference' => 'processo-1', 'name' => 'Contabilità ordinaria'], 'activity' => ['name' => 'Registrazione fatture'], 'deadline' => '2026-11-30'],
         ...$overrides,
     ];
 }
@@ -196,6 +196,24 @@ function selectedTransaction(array $overrides = []): array
         'revision' => 2,
         ...$overrides,
     ]);
+}
+
+/**
+ * The payload of transaction.assignment_received v1: the transaction accepted with the selection of a firm, and the
+ * principal revealed to it.
+ *
+ * @return array<string, mixed>
+ */
+function assignmentReceived(array $transaction = []): array
+{
+    return [
+        'transaction' => selectedTransaction([
+            'audience' => 'member',
+            'counterparty' => ['type' => 'member', 'member_id' => '0199b6f1-5c3a-7e10-8d2b-4a6f9e1c3b55', 'tax_code' => null, 'first_name' => null, 'last_name' => null, 'email' => null, 'vat_number' => null, 'municipality' => null, 'province' => null],
+            ...$transaction,
+        ]),
+        'principal' => ['id' => '0199b6f0-4e2a-7b31-9f6c-2d8a1e5b7c43', 'name' => 'Studio Rossi e Associati', 'municipality' => 'Bari', 'province' => 'BA'],
+    ];
 }
 
 /**

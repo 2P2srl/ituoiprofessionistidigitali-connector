@@ -93,6 +93,7 @@ it('L6: hands the events of the platform, without sender, to the application', f
     'application withdrawn' => [Contract::APPLICATION_WITHDRAWN, applicationEvent(['status' => 'withdrawn', 'closed_at' => '2026-10-11T08:00:00Z'])],
     'counterparty selected' => [Contract::COUNTERPARTY_SELECTED, counterpartySelected()],
     'transaction withdrawn' => [Contract::TRANSACTION_WITHDRAWN, transactionWithdrawn()],
+    'assignment received' => [Contract::ASSIGNMENT_RECEIVED, assignmentReceived()],
 ]);
 
 it('L4 and L9: keeps the selection or the withdrawal of the platform in the outbox before the listeners of the application run', function (string $type, callable $payload, string $status): void {

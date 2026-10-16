@@ -1,0 +1,66 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://ituoiprofessionistidigitali.it/contract/event-types/coworking.activity_status/1.json",
+    "title": "coworking.activity_status v1",
+    "description": "Lo studio scelto dice al committente che un'attività è completata o riaperta, con l'istante. Il committente lo riporta nei suoi PUT della transazione.",
+    "type": "object",
+    "properties": {
+        "transaction": {
+            "description": "La transazione dell'affidamento fra i due studi.",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/uuid"
+                }
+            },
+            "required": [
+                "id"
+            ],
+            "additionalProperties": false
+        },
+        "activity": {
+            "description": "Il reference dell'attività nella transazione.",
+            "$ref": "#/$defs/reference"
+        },
+        "status": {
+            "enum": [
+                "completed",
+                "reopened"
+            ]
+        },
+        "occurred_at": {
+            "$ref": "#/$defs/datetime"
+        }
+    },
+    "required": [
+        "transaction",
+        "activity",
+        "status",
+        "occurred_at"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+        "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "datetime": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 191
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+        },
+        "province": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+        }
+    }
+}

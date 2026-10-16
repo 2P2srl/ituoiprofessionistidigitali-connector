@@ -57,11 +57,11 @@ it('R6: checks every description against the schema fixed in the package before 
     withToken(['platform.test/api/v1/transactions/*' => Http::response(['data' => recordedTransaction()], 201)]);
 
     Platform::recordTransaction('invio-1', TransactionData::from(transaction(['activities' => [
-        activity(['description' => ['process' => null, 'activity' => null, 'deadline' => null]]),
+        activity(['description' => ['process' => ['reference' => 'agenda-7', 'name' => null], 'activity' => null, 'deadline' => null]]),
     ]])), 1);
 
     Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/transactions/invio-1')
-        && $request->data()['activities'][0]['description'] === ['process' => null, 'activity' => null, 'deadline' => null]);
+        && $request->data()['activities'][0]['description'] === ['process' => ['reference' => 'agenda-7', 'name' => null], 'activity' => null, 'deadline' => null]);
 });
 
 it('R5 and R14: does not send what the rules of the register refuse', function (): void {
@@ -82,8 +82,8 @@ it('R6: leaves the payload to the platform when the local validation is off or t
 
     Http::assertSentCount(2);
 })->with([
-    'validation off' => [['validate_payloads' => false], ['activities' => [activity(['description' => ['anything' => true]])]]],
-    'schema not in the package' => [[], ['type' => 'loan', 'activities' => [activity(['description' => ['anything' => true]])]]],
+    'validation off' => [['validate_payloads' => false], ['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'anything' => true]])]]],
+    'schema not in the package' => [[], ['type' => 'loan', 'activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'anything' => true]])]]],
 ]);
 
 it('R7: reads the transaction already registered from a conflict', function (): void {

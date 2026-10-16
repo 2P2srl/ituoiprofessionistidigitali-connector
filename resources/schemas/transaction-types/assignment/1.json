@@ -2,27 +2,64 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://ituoiprofessionistidigitali.it/contract/transaction-types/assignment/1.json",
     "title": "assignment v1",
-    "description": "La descrizione di un'attività affidata, con i nomi del catalogo del sistema: null dove il catalogo non ha un nome. Nessun testo libero e nessun dato del cliente finale: nome, codice fiscale e partita IVA del cliente non hanno un campo e non sono ammessi.",
+    "description": "La descrizione di un'attività affidata: il riferimento del suo processo e i nomi del catalogo del sistema, null dove il catalogo non ha un nome. Nessun testo libero e nessun dato del cliente finale: nome, codice fiscale e partita IVA del cliente non hanno un campo e non sono ammessi.",
     "type": "object",
     "properties": {
         "process": {
-            "type": ["object", "null"],
+            "description": "Il processo dell'attività, per ogni tipo di soggetto: processo di linea, di staff, progetto o agenda.",
+            "type": "object",
             "properties": {
-                "name": { "type": "string", "minLength": 1, "maxLength": 255 }
+                "reference": {
+                    "description": "L'identificativo opaco del processo nel sistema che manda: stabile per ogni istanza del soggetto e uguale per tutte le sue attività. Mai un nome.",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 191
+                },
+                "name": {
+                    "description": "Il nome del processo nel catalogo, null se non ne ha uno.",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 255
+                }
             },
-            "required": ["name"],
+            "required": [
+                "reference",
+                "name"
+            ],
             "additionalProperties": false
         },
         "activity": {
-            "type": ["object", "null"],
+            "type": [
+                "object",
+                "null"
+            ],
             "properties": {
-                "name": { "type": "string", "minLength": 1, "maxLength": 255 }
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                }
             },
-            "required": ["name"],
+            "required": [
+                "name"
+            ],
             "additionalProperties": false
         },
-        "deadline": { "type": ["string", "null"], "format": "date" }
+        "deadline": {
+            "type": [
+                "string",
+                "null"
+            ],
+            "format": "date"
+        }
     },
-    "required": ["process", "activity", "deadline"],
+    "required": [
+        "process",
+        "activity",
+        "deadline"
+    ],
     "additionalProperties": false
 }

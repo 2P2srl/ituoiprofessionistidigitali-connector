@@ -1,0 +1,183 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://ituoiprofessionistidigitali.it/contract/event-types/coworking.activities_assigned/1.json",
+    "title": "coworking.activities_assigned v1",
+    "description": "Il lavoro che il committente passa allo studio scelto dopo la firma dei documenti del coworking: per ogni processo il cliente finale, per ogni attività i dati e le guide, con i file allegati.",
+    "type": "object",
+    "properties": {
+        "transaction": {
+            "description": "La transazione dell'affidamento fra i due studi.",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/uuid"
+                }
+            },
+            "required": [
+                "id"
+            ],
+            "additionalProperties": false
+        },
+        "processes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 500,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "reference": {
+                        "description": "Il riferimento del processo, lo stesso delle attività della transazione.",
+                        "$ref": "#/$defs/reference"
+                    },
+                    "name": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "minLength": 1,
+                        "maxLength": 255
+                    },
+                    "client": {
+                        "description": "Il cliente finale del committente per questo processo.",
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "$ref": "#/$defs/name"
+                            },
+                            "tax_code": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "pattern": "^([0-9]{11}|[A-Z0-9]{16})$"
+                            }
+                        },
+                        "required": [
+                            "name",
+                            "tax_code"
+                        ],
+                        "additionalProperties": false
+                    },
+                    "activities": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 500,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "reference": {
+                                    "description": "Il reference di un'attività della transazione.",
+                                    "$ref": "#/$defs/reference"
+                                },
+                                "name": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ],
+                                    "minLength": 1,
+                                    "maxLength": 255
+                                },
+                                "deadline": {
+                                    "type": [
+                                        "string",
+                                        "null"
+                                    ],
+                                    "format": "date"
+                                },
+                                "fixed_amount_cents": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                },
+                                "estimated_minutes": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                },
+                                "guides": {
+                                    "type": "array",
+                                    "maxItems": 50,
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "title": {
+                                                "$ref": "#/$defs/name"
+                                            },
+                                            "body": {
+                                                "description": "Il testo della guida, in Markdown.",
+                                                "type": "string",
+                                                "maxLength": 20000
+                                            },
+                                            "attachments": {
+                                                "type": "array",
+                                                "maxItems": 20,
+                                                "items": {
+                                                    "$ref": "#/$defs/file_id"
+                                                }
+                                            }
+                                        },
+                                        "required": [
+                                            "title",
+                                            "body",
+                                            "attachments"
+                                        ],
+                                        "additionalProperties": false
+                                    }
+                                }
+                            },
+                            "required": [
+                                "reference",
+                                "name",
+                                "deadline",
+                                "fixed_amount_cents",
+                                "estimated_minutes",
+                                "guides"
+                            ],
+                            "additionalProperties": false
+                        }
+                    }
+                },
+                "required": [
+                    "reference",
+                    "name",
+                    "client",
+                    "activities"
+                ],
+                "additionalProperties": false
+            }
+        }
+    },
+    "required": [
+        "transaction",
+        "processes"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+        "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "datetime": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 191
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+        },
+        "province": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+        },
+        "file_id": {
+            "description": "L'id di un file caricato con POST /files ed elencato in files della busta.",
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "format": "platform-file"
+        }
+    }
+}

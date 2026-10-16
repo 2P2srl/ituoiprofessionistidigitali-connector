@@ -10,15 +10,16 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Support\Validation\ValidationContext;
 
 /**
- * The work of an activity with the names of the catalogue of the system, null where the catalogue has none.
- * Never a name that may hold the client, such as an agenda or a project area named after it (rule R6).
+ * The work of an activity: the process it belongs to, always, and the names of the catalogue of the system, null
+ * where the catalogue has none. Never a name that may hold the client, such as an agenda or a project area named
+ * after it (rule R6).
  *
- * It reads both its own flat form and the form of the schema assignment v1, `{"process": {"name": "…"}}`.
+ * The activity reads both its own flat form and the form of the schema assignment v1, `{"activity": {"name": "…"}}`.
  */
 final class ActivityDescriptionData extends Data
 {
     public function __construct(
-        public ?string $process = null,
+        public ProcessData $process,
         public ?string $activity = null,
         public ?string $deadline = null,
     ) {}
@@ -29,12 +30,9 @@ final class ActivityDescriptionData extends Data
      */
     public static function prepareForPipeline(array $properties): array
     {
-        foreach (['process', 'activity'] as $field)
+        if (is_array($properties['activity'] ?? null))
         {
-            if (is_array($properties[$field] ?? null))
-            {
-                $properties[$field] = $properties[$field]['name'] ?? null;
-            }
+            $properties['activity'] = $properties['activity']['name'] ?? null;
         }
 
         return $properties;
@@ -49,7 +47,7 @@ final class ActivityDescriptionData extends Data
 
         // An empty name is no name: it must be null, as the schema wants it
         return [
-            'process' => ['present', Rule::requiredIf(($description['process'] ?? null) === ''), 'nullable', self::name(...)],
+            'process' => ['required', 'array:reference,name'],
             'activity' => ['present', Rule::requiredIf(($description['activity'] ?? null) === ''), 'nullable', self::name(...)],
             'deadline' => ['present', 'nullable', 'string', 'date_format:Y-m-d'],
         ];
@@ -58,12 +56,12 @@ final class ActivityDescriptionData extends Data
     /**
      * The description as the schema assignment v1 wants it.
      *
-     * @return array{process: array{name: string}|null, activity: array{name: string}|null, deadline: string|null}
+     * @return array{process: array{reference: string, name: string|null}, activity: array{name: string}|null, deadline: string|null}
      */
     public function toWire(): array
     {
         return [
-            'process' => $this->process === null ? null : ['name' => $this->process],
+            'process' => $this->process->toWire(),
             'activity' => $this->activity === null ? null : ['name' => $this->activity],
             'deadline' => $this->deadline,
         ];

@@ -194,7 +194,8 @@ I DTO sono tipizzati e non conoscono i modelli del sistema: è il sistema che ma
 | `CounterpartyData` | `CounterpartyData::person($codiceFiscale, $nome, $cognome, $email, $partitaIva, $comune, $provincia)`, con l'email obbligatoria e gli ultimi tre facoltativi: l'anagrafica al momento dell'invio, identica a ogni revisione (R13). Oppure `CounterpartyData::member($idAderente)`. L'email della persona va in minuscolo, come il portale la salva e la restituisce (T6). Sul filo ha sempre le nove chiavi `type`, `member_id`, `tax_code`, `first_name`, `last_name`, `email`, `vat_number`, `municipality`, `province` |
 | `TransactionActivityData` | Un'attività: riferimento, compenso, minuti, stato, chiusura, descrizione |
 | `CompensationData` | `CompensationData::hourly($centesimiAllOra)` o `CompensationData::fixed($centesimi)` |
-| `ActivityDescriptionData` | Nome del processo e dell'attività nel catalogo, o `null`, e scadenza `Y-m-d` |
+| `ActivityDescriptionData` | Il processo dell'attività (`ProcessData`, obbligatorio), il nome dell'attività nel catalogo, o `null`, e la scadenza `Y-m-d` |
+| `ProcessData` | Il processo di ogni attività: `reference`, l'identificativo opaco del sistema (da 1 a 191 caratteri, mai un nome), stabile per ogni istanza del soggetto (processo di linea o di staff, progetto, agenda) e uguale per tutte le sue attività, così lo studio che le riceve le raggruppa nello stesso processo; `name`, il nome del processo nel catalogo, o `null` se non ne ha uno |
 
 ```php
 $diretto = new TransactionData(
@@ -212,14 +213,14 @@ $diretto = new TransactionData(
         compensation: CompensationData::hourly(4500),
         estimated_minutes: 120,
         status: TransactionActivityStatus::Open,
-        description: new ActivityDescriptionData('Contabilità ordinaria', 'Registrazione fatture', '2026-11-30'),
+        description: new ActivityDescriptionData(new ProcessData((string) $processo->id, 'Contabilità ordinaria'), 'Registrazione fatture', '2026-11-30'),
     )],
 );
 ```
 
 Un incarico pubblicato ha `counterparty: null`, `status: TransactionStatus::Published`, `expires_at` e `audience: Audience::Any` (o `Person`, `Member`). I minuti lavorati dipendono dal tipo della controparte: con una persona sono obbligatori in un'attività `completed`, con un aderente o senza controparte sono sempre `null` (R5).
 
-La parte ferma all'invio (audience, controparte, tipologia, testi, prezzi) non cambia fra una revisione e l'altra (R13). Il modello che registra la transazione la costruisce da quello che ha fotografato all'invio, non dalle anagrafiche di oggi; un cambio dell'anagrafica si dichiara a parte (vedi «Anagrafica dei professionisti»). `TransactionData::from()` legge anche il corpo del portale, con la descrizione nella forma dello schema (`{"process": {"name": "…"}}`).
+La parte ferma all'invio (audience, controparte, tipologia, testi, prezzi) non cambia fra una revisione e l'altra (R13). Il modello che registra la transazione la costruisce da quello che ha fotografato all'invio, non dalle anagrafiche di oggi; un cambio dell'anagrafica si dichiara a parte (vedi «Anagrafica dei professionisti»). `TransactionData::from()` legge anche il corpo del portale, con la descrizione nella forma dello schema (`{"process": {"reference": "…", "name": "…"}, "activity": {"name": "…"}}`).
 
 Il modello che corrisponde all'invio lo dichiara con un'interfaccia, e il pacchetto fa il resto:
 

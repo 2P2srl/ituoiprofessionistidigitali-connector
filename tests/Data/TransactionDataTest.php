@@ -8,6 +8,7 @@ use Illuminate\Validation\ValidationException;
 use ITuoiProfessionistiDigitali\Connector\Data\ActivityDescriptionData;
 use ITuoiProfessionistiDigitali\Connector\Data\CompensationData;
 use ITuoiProfessionistiDigitali\Connector\Data\CounterpartyData;
+use ITuoiProfessionistiDigitali\Connector\Data\ProcessData;
 use ITuoiProfessionistiDigitali\Connector\Data\RecordedTransactionData;
 use ITuoiProfessionistiDigitali\Connector\Data\TransactionActivityData;
 use ITuoiProfessionistiDigitali\Connector\Data\TransactionData;
@@ -113,7 +114,7 @@ it('R3, R5 and R8: sends a valid transaction with exactly the body of the platfo
             'minutes_worked' => null,
             'status' => 'open',
             'closed_at' => null,
-            'description' => ['process' => ['name' => 'Contabilità ordinaria'], 'activity' => ['name' => 'Registrazione fatture'], 'deadline' => '2026-11-30'],
+            'description' => ['process' => ['reference' => 'processo-1', 'name' => 'Contabilità ordinaria'], 'activity' => ['name' => 'Registrazione fatture'], 'deadline' => '2026-11-30'],
         ]);
 });
 
@@ -144,7 +145,7 @@ it('builds the same body from code, with the typed DTOs', function (): void {
             compensation: CompensationData::hourly(4500),
             estimated_minutes: 120,
             status: TransactionActivityStatus::Open,
-            description: new ActivityDescriptionData('Contabilità ordinaria', 'Registrazione fatture', '2026-11-30'),
+            description: new ActivityDescriptionData(new ProcessData('processo-1', 'Contabilità ordinaria'), 'Registrazione fatture', '2026-11-30'),
         )],
     );
 
@@ -178,13 +179,12 @@ it('R3: sends a member counterparty and a fixed price with every key, null where
         ->and($wire['activities'][0]['compensation'])->toBe(['form' => 'fixed', 'hourly_rate_cents' => null, 'fixed_amount_cents' => 150000]);
 });
 
-it('R6: reads a description flat or in the form of the schema, and sends missing names as null', function (): void {
-    $flat = TransactionData::validateAndCreate(transaction(['activities' => [activity(['description' => ['process' => 'Contabilità ordinaria', 'activity' => null, 'deadline' => null]])]]));
+it('R6: reads the name of the activity flat or in the form of the schema, and sends a missing name as null', function (): void {
+    $flat = TransactionData::validateAndCreate(transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'agenda-7', 'name' => null], 'activity' => 'Registrazione fatture', 'deadline' => null]])]]));
 
-    expect($flat->activities[0]->description->process)->toBe('Contabilità ordinaria')
-        ->and($flat->toWire(1)['activities'][0]['description'])->toBe(['process' => ['name' => 'Contabilità ordinaria'], 'activity' => null, 'deadline' => null])
-        ->and(TransactionData::from(transaction(['activities' => [activity(['description' => []])]]))->toWire(1)['activities'][0]['description'])
-        ->toBe(['process' => null, 'activity' => null, 'deadline' => null]);
+    expect($flat->activities[0]->description->process)->toEqual(new ProcessData('agenda-7'))
+        ->and($flat->activities[0]->description->activity)->toBe('Registrazione fatture')
+        ->and($flat->toWire(1)['activities'][0]['description'])->toBe(['process' => ['reference' => 'agenda-7', 'name' => null], 'activity' => ['name' => 'Registrazione fatture'], 'deadline' => null]);
 });
 
 it('accepts every status with its activities and dates', function (string $status): void {
@@ -231,7 +231,7 @@ it('R16 and L4: keeps whom a published assignment was open to, and its expiry, a
 
 it('L4: sends again the transaction the platform accepted with the selection, as it returned it', function (): void {
     $recorded = RecordedTransactionData::from(selectedTransaction(['activities' => [
-        [...activity(['compensation' => ['form' => 'fixed', 'hourly_rate_cents' => null, 'fixed_amount_cents' => 90000], 'description' => ['process' => null, 'activity' => null, 'deadline' => null]]), 'total_cents' => 90000],
+        [...activity(['compensation' => ['form' => 'fixed', 'hourly_rate_cents' => null, 'fixed_amount_cents' => 90000], 'description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null, 'deadline' => null]]), 'total_cents' => 90000],
     ]]));
 
     $wire = TransactionData::validateAndCreate($recorded->toTransaction()->toWire(revision: 3))->toWire(revision: 3);
@@ -242,7 +242,7 @@ it('L4: sends again the transaction the platform accepted with the selection, as
         'expires_at' => '2026-10-31T22:59:59+00:00',
         'responded_at' => '2026-10-12T09:00:00+00:00',
         'revision' => 3,
-        'activities' => [activity(['compensation' => ['form' => 'fixed', 'hourly_rate_cents' => null, 'fixed_amount_cents' => 90000], 'description' => ['process' => null, 'activity' => null, 'deadline' => null]])],
+        'activities' => [activity(['compensation' => ['form' => 'fixed', 'hourly_rate_cents' => null, 'fixed_amount_cents' => 90000], 'description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null, 'deadline' => null]])],
     ]);
 });
 
@@ -276,9 +276,16 @@ it('refuses what the register would refuse', function (array $body, string $fiel
     'R3 province in lower case' => [transaction(['counterparty' => person(['province' => 'ba'])]), 'counterparty.province'],
     'R3 member with a name' => [transaction(['audience' => 'member', 'counterparty' => firm(['last_name' => 'Rossi'])]), 'counterparty.last_name'],
     'R3 sent without counterparty' => [transaction(['counterparty' => null]), 'counterparty'],
-    'R6 a field of the client' => [transaction(['activities' => [activity(['description' => ['process' => ['name' => 'x', 'client' => 'Rossi'], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process'],
-    'R6 an empty name' => [transaction(['activities' => [activity(['description' => ['process' => '', 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process'],
-    'R6 a deadline that is not a date' => [transaction(['activities' => [activity(['description' => ['process' => null, 'activity' => null, 'deadline' => 'domani']])]]), 'activities.0.description.deadline'],
+    'R6 a field of the client' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => 'x', 'client' => 'Rossi'], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process'],
+    'R6 an empty name' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => ''], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process.name'],
+    'R6 a name of the process too long' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => str_repeat('a', 256)], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process.name'],
+    'R6 a field of the client on the activity' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => ['name' => 'x', 'client' => 'Rossi'], 'deadline' => null]])]]), 'activities.0.description.activity'],
+    'R6 an empty name of the activity' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => '', 'deadline' => null]])]]), 'activities.0.description.activity'],
+    'R6 an activity without process' => [transaction(['activities' => [activity(['description' => ['process' => null, 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process'],
+    'R6 a process as a name only' => [transaction(['activities' => [activity(['description' => ['process' => 'Contabilità ordinaria', 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process'],
+    'R6 a process without reference' => [transaction(['activities' => [activity(['description' => ['process' => ['name' => 'Contabilità ordinaria'], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process.reference'],
+    'R6 a reference of the process too long' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => str_repeat('a', 192), 'name' => null], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process.reference'],
+    'R6 a deadline that is not a date' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null, 'deadline' => 'domani']])]]), 'activities.0.description.deadline'],
     'R16 without audience' => [[...transactionIn('published'), 'audience' => null], 'audience'],
     'R16 open to a bank' => [[...transactionIn('published'), 'audience' => 'bank'], 'audience'],
     'R16 sent without audience' => [transaction(['audience' => null]), 'audience'],
@@ -330,7 +337,7 @@ it('refuses what the register would refuse', function (array $body, string $fiel
     'an activity without the key of the minutes worked' => [transaction(['activities' => [Arr::except(activity(), 'minutes_worked')]]), 'activities.0.minutes_worked'],
     'an activity without the key of the closing' => [transaction(['activities' => [Arr::except(activity(), 'closed_at')]]), 'activities.0.closed_at'],
     'a compensation without the key of the fixed amount' => [transaction(['activities' => [activity(['compensation' => ['form' => 'hourly', 'hourly_rate_cents' => 4500]])]]), 'activities.0.compensation.fixed_amount_cents'],
-    'a description without the key of the deadline' => [transaction(['activities' => [activity(['description' => ['process' => null, 'activity' => null]])]]), 'activities.0.description.deadline'],
+    'a description without the key of the deadline' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null]])]]), 'activities.0.description.deadline'],
     'R6 published without description' => [[...transactionIn('published'), 'description' => null], 'description'],
     'R6 title too long' => [transaction(['title' => str_repeat('a', 256)]), 'title'],
     'R6 empty title' => [transaction(['title' => '']), 'title'],
@@ -350,8 +357,8 @@ it('R10: refuses the activities as the nested rules of Spatie did, with the same
     'a compensation of an unknown form' => [transaction(['activities' => [activity(['compensation' => ['form' => 'monthly', 'hourly_rate_cents' => 4500, 'fixed_amount_cents' => null]])]]), true],
     'a compensation that is not an object' => [transaction(['activities' => [activity(['compensation' => 'hourly'])]]), true],
     'R5 both amounts' => [transaction(['activities' => [activity(['compensation' => ['form' => 'hourly', 'hourly_rate_cents' => 4500, 'fixed_amount_cents' => 1]])]]), true],
-    'R6 a description outside the schema' => [transaction(['activities' => [activity(['description' => ['process' => ['name' => 'x', 'client' => 'Rossi'], 'activity' => null, 'deadline' => null]])]]), true],
-    'R6 a deadline that is not a date' => [transaction(['activities' => [activity(['description' => ['process' => null, 'activity' => null, 'deadline' => 'domani']])]]), true],
+    'R6 a description outside the schema' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => 'x', 'client' => 'Rossi'], 'activity' => null, 'deadline' => null]])]]), true],
+    'R6 a deadline that is not a date' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null, 'deadline' => 'domani']])]]), true],
     'an unknown status' => [transaction(['activities' => [activity(['status' => 'paused'])]]), true],
     'R5 minutes of a firm, read from the counterparty' => [[...transactionIn('completed'), 'audience' => 'member', 'counterparty' => firm()], true],
     'R22 completed without signature, read from the header' => [[...transactionIn('accepted'), 'activities' => [activity(['status' => 'completed', 'closed_at' => '2026-10-20T09:00:00Z', 'minutes_worked' => 90]), activity(['reference' => 'riga-2'])]], true],

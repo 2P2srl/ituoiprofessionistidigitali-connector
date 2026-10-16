@@ -63,7 +63,7 @@ final class Assignment extends Model implements RecordsPlatformTransaction
                 'minutes_worked' => $activity->minutes,
                 'status' => $activity->status,
                 'closed_at' => $activity->status === 'open' ? null : '2026-10-20T09:00:00+02:00',
-                'description' => ['process' => ['name' => 'Contabilità ordinaria'], 'activity' => ['name' => 'Registrazione fatture'], 'deadline' => null],
+                'description' => ['process' => ['reference' => 'processo-1', 'name' => 'Contabilità ordinaria'], 'activity' => ['name' => 'Registrazione fatture'], 'deadline' => null],
             ])->all(),
         ]);
     }

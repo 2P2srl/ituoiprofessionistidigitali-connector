@@ -57,10 +57,30 @@ final class Contract
     public const string TRANSACTION_WITHDRAWN = 'transaction.withdrawn';
 
     /**
+     * A published assignment given to a firm with the selection, sent to the system of the firm.
+     */
+    public const string ASSIGNMENT_RECEIVED = 'transaction.assignment_received';
+
+    /**
+     * The details for the contracts of the coworking, that each firm sends to the other after the selection.
+     */
+    public const string CONTRACT_DETAILS = 'coworking.contract_details';
+
+    /**
+     * The work the principal hands to the selected firm after the signature of the documents of the coworking.
+     */
+    public const string ACTIVITIES_ASSIGNED = 'coworking.activities_assigned';
+
+    /**
+     * The selected firm telling the principal that an activity was completed or reopened.
+     */
+    public const string ACTIVITY_STATUS = 'coworking.activity_status';
+
+    /**
      * The event types only the platform sends, with no sender (rule L6). A webhook takes an envelope without sender
      * only of these types, or the verification ping.
      */
-    public const array PLATFORM_EVENTS = [self::APPLICATION_RECEIVED, self::APPLICATION_WITHDRAWN, self::COUNTERPARTY_SELECTED, self::TRANSACTION_WITHDRAWN];
+    public const array PLATFORM_EVENTS = [self::APPLICATION_RECEIVED, self::APPLICATION_WITHDRAWN, self::COUNTERPARTY_SELECTED, self::TRANSACTION_WITHDRAWN, self::ASSIGNMENT_RECEIVED];
 
     public const int MAX_MEMBERS = 1000;
 

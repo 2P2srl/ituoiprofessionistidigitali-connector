@@ -1,0 +1,158 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://ituoiprofessionistidigitali.it/contract/event-types/coworking.contract_details/1.json",
+    "title": "coworking.contract_details v1",
+    "description": "I dati per i contratti del coworking, che ognuno dei due studi manda all'altro subito dopo la scelta: l'anagrafica dello studio e chi firma.",
+    "type": "object",
+    "properties": {
+        "transaction": {
+            "description": "La transazione dell'affidamento fra i due studi.",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/uuid"
+                }
+            },
+            "required": [
+                "id"
+            ],
+            "additionalProperties": false
+        },
+        "party": {
+            "description": "Lo studio che manda i suoi dati.",
+            "type": "object",
+            "properties": {
+                "name": {
+                    "description": "La ragione sociale.",
+                    "$ref": "#/$defs/name"
+                },
+                "vat_number": {
+                    "type": "string",
+                    "pattern": "^[0-9]{11}$"
+                },
+                "tax_code": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "pattern": "^([0-9]{11}|[A-Z0-9]{16})$"
+                },
+                "address": {
+                    "description": "La sede legale.",
+                    "type": "object",
+                    "properties": {
+                        "street": {
+                            "$ref": "#/$defs/name"
+                        },
+                        "postal_code": {
+                            "type": "string",
+                            "pattern": "^[0-9]{5}$"
+                        },
+                        "municipality": {
+                            "$ref": "#/$defs/name"
+                        },
+                        "province": {
+                            "$ref": "#/$defs/province"
+                        }
+                    },
+                    "required": [
+                        "street",
+                        "postal_code",
+                        "municipality",
+                        "province"
+                    ],
+                    "additionalProperties": false
+                },
+                "pec": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "format": "email",
+                    "maxLength": 255
+                },
+                "recipient_code": {
+                    "description": "Il codice destinatario per la fatturazione elettronica.",
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "pattern": "^[A-Z0-9]{7}$"
+                }
+            },
+            "required": [
+                "name",
+                "vat_number",
+                "tax_code",
+                "address",
+                "pec",
+                "recipient_code"
+            ],
+            "additionalProperties": false
+        },
+        "signatory": {
+            "description": "Chi firma i contratti per lo studio.",
+            "type": "object",
+            "properties": {
+                "first_name": {
+                    "$ref": "#/$defs/name"
+                },
+                "last_name": {
+                    "$ref": "#/$defs/name"
+                },
+                "tax_code": {
+                    "type": "string",
+                    "pattern": "^[A-Z0-9]{16}$"
+                },
+                "email": {
+                    "type": "string",
+                    "format": "email",
+                    "maxLength": 255
+                },
+                "mobile": {
+                    "description": "Il cellulare, in formato E.164.",
+                    "type": "string",
+                    "pattern": "^\\+[1-9][0-9]{6,14}$"
+                }
+            },
+            "required": [
+                "first_name",
+                "last_name",
+                "tax_code",
+                "email",
+                "mobile"
+            ],
+            "additionalProperties": false
+        }
+    },
+    "required": [
+        "transaction",
+        "party",
+        "signatory"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+        "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "datetime": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 191
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+        },
+        "province": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+        }
+    }
+}
