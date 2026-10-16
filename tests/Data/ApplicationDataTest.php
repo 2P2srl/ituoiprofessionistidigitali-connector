@@ -6,6 +6,7 @@ use ITuoiProfessionistiDigitali\Connector\Data\ApplicationData;
 use ITuoiProfessionistiDigitali\Connector\Data\ApplicationPage;
 use ITuoiProfessionistiDigitali\Connector\Data\ApplicationReceivedData;
 use ITuoiProfessionistiDigitali\Connector\Data\ApplicationWithdrawnData;
+use ITuoiProfessionistiDigitali\Connector\Data\CounterpartyData;
 use ITuoiProfessionistiDigitali\Connector\Data\CounterpartySelectedData;
 use ITuoiProfessionistiDigitali\Connector\Enums\ApplicationStatus;
 use ITuoiProfessionistiDigitali\Connector\Enums\Audience;
@@ -54,4 +55,34 @@ it('L4 and L6: reads the selection, with the transaction accepted, the person an
 it('L7: tells whether a page of applications has a next one', function (): void {
     expect(new ApplicationPage([ApplicationData::from(application())], 'next')->hasMore())->toBeTrue()
         ->and(new ApplicationPage([], null)->hasMore())->toBeFalse();
+});
+
+it('L7 and L10: reads a firm that applied, with its name and seat only', function (): void {
+    $applicant = ApplicationData::from(application(['applicant' => firmApplicant()]))->applicant;
+
+    expect($applicant)
+        ->type->toBe(CounterpartyType::Member)
+        ->name->toBe('Studio Bianchi')
+        ->municipality->toBe('Lecce')
+        ->province->toBe('LE')
+        ->first_name->toBeNull()
+        ->last_name->toBeNull()
+        ->tax_code_verified->toBeNull()
+        ->and($applicant->isMember())->toBeTrue()
+        ->and(ApplicationData::from(application())->applicant->isMember())->toBeFalse()
+        ->and(ApplicationData::from(application())->applicant->name)->toBeNull();
+});
+
+it('L4: reads the selection of a firm, with the member as counterparty and no contact', function (): void {
+    $selection = CounterpartySelectedData::from(firmSelected());
+
+    expect($selection->transaction)
+        ->audience->toBe(Audience::Member)
+        ->and($selection->transaction->counterparty)
+        ->type->toBe(CounterpartyType::Member)
+        ->member_id->toBe('0199b6f1-5c3a-7e10-8d2b-4a6f9e1c3b55')
+        ->tax_code->toBeNull()
+        ->and($selection->application->applicant->isMember())->toBeTrue()
+        ->and($selection->contact)->toBeNull()
+        ->and($selection->transaction->toTransaction()->counterparty)->toEqual(CounterpartyData::member('0199b6f1-5c3a-7e10-8d2b-4a6f9e1c3b55'));
 });

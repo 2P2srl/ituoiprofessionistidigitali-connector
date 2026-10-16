@@ -166,6 +166,30 @@ function application(array $overrides = []): array
 }
 
 /**
+ * A firm that applied, as the principal sees it before the selection (rules L7 and L10).
+ *
+ * @return array<string, mixed>
+ */
+function firmApplicant(): array
+{
+    return ['type' => 'member', 'name' => 'Studio Bianchi', 'municipality' => 'Lecce', 'province' => 'LE'];
+}
+
+/**
+ * The payload of transaction.counterparty_selected v1 for a firm: the member as counterparty, and no contact.
+ *
+ * @return array<string, mixed>
+ */
+function firmSelected(): array
+{
+    return [
+        'transaction' => assignmentReceived()['transaction'],
+        'application' => application(['status' => 'selected', 'closed_at' => '2026-10-12T09:00:00Z', 'applicant' => firmApplicant()]),
+        'contact' => null,
+    ];
+}
+
+/**
  * The payload of transaction.application_received or transaction.application_withdrawn v1, on the published
  * transaction invio-1.
  *

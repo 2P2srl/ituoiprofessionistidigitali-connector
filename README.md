@@ -291,7 +291,7 @@ final class ExternalAssignmentActivity extends Model implements AffectsPlatformT
 
 ## Candidature e scelta della controparte
 
-Un incarico pubblicato trova la sua controparte sul portale. I professionisti registrati si candidano accettandone le condizioni, e il committente sceglie: la scelta porta l'incarico da `published` ad `accepted` (regole L2–L8). Il sistema del committente riceve quattro eventi del portale:
+Un incarico pubblicato trova la sua controparte sul portale. I professionisti registrati, agli incarichi `person` o `any`, e gli studi aderenti di un altro sistema, agli incarichi `member` o `any` (L10), si candidano accettandone le condizioni, e il committente sceglie: la scelta porta l'incarico da `published` ad `accepted` (regole L2–L8). Il sistema del committente riceve quattro eventi del portale:
 
 | Tipo | Payload | Quando |
 | --- | --- | --- |
@@ -307,17 +307,18 @@ use ITuoiProfessionistiDigitali\Connector\Data\CounterpartySelectedData;
 if ($envelope->type === Contract::COUNTERPARTY_SELECTED)
 {
     $scelta = CounterpartySelectedData::from($envelope->payload);
-    $scelta->transaction;            // RecordedTransactionData, accepted, con la controparte persona
+    $scelta->transaction;            // RecordedTransactionData, accepted, con la controparte persona o aderente
     $scelta->application;            // ApplicationData, selected
-    $scelta->contact->mobile;        // il cellulare in E.164, fuori dalla controparte
+    $scelta->contact?->mobile;       // il cellulare in E.164, fuori dalla controparte; null per uno studio
 }
 ```
 
-- Una candidatura (`ApplicationData`) porta lo stato, `applied_at`, il consenso alle condizioni (`terms_accepted_at`), la revisione accettata (`accepted_revision`) e il candidato (`ApplicantData`): nome, cognome, comune, provincia e `tax_code_verified`. Codice fiscale, email e partita IVA arrivano solo con la scelta, nella controparte, e il cellulare solo nell'evento della scelta (L7).
+- Una candidatura (`ApplicationData`) porta lo stato, `applied_at`, il consenso alle condizioni (`terms_accepted_at`), la revisione accettata (`accepted_revision`) e il candidato (`ApplicantData`). Un professionista ha nome, cognome, comune, provincia e `tax_code_verified`; uno studio (`$candidato->isMember()`) ha `name`, comune e provincia, con i campi della persona a `null`, e il suo id arriva solo con la scelta, nella controparte. Codice fiscale, email e partita IVA arrivano solo con la scelta, nella controparte, e il cellulare solo nell'evento della scelta (L7).
 - `Platform::applications($reference, ApplicationStatus::Pending, perPage: 25, cursor: null)` legge le candidature di un incarico, una pagina alla volta (`ApplicationPage`).
 - `Platform::selectApplication($reference, $idCandidatura)` sceglie e restituisce la transazione `accepted`. Scegliere di nuovo la stessa candidatura risponde con la transazione com'è. I rifiuti hanno un'eccezione propria: `TransactionNotFoundException` (404, la `reference` non è del sistema), `ApplicationNotSelectableException` (422 su `application`: candidatura sconosciuta, di un'altra transazione o non più `pending`) e `TransactionNotPublishedException` (422 su `status`: incarico ritirato o già accettato). Non si ritentano.
 - `transaction.counterparty_selected` arriva **sempre**, anche quando la scelta l'ha fatta il sistema: è la strada unica per creare quello che serve, come l'anagrafica della persona scelta. Il listener è idempotente sull'`event_id` e sulla `reference`.
 - Con la scelta il portale registra la transazione alla sua revisione più 1. Il pacchetto la scrive nella outbox come confermata, sia dalla risposta di `selectApplication()` sia dall'evento, prima dei listener. Se la outbox ha già una revisione più alta, resta com'è. Il prossimo salvataggio del modello parte quindi dalla revisione successiva, senza conflitti; una versione rimasta in attesa alla stessa revisione, come un ritiro, è sostituita dalla scelta, che il portale non disfa.
+- Scelto uno studio, la controparte è `{"type": "member", "member_id": …}` con i campi della persona a `null`, anche se l'aderente è di un altro sistema, e `contact` è `null`: i due studi si scambiano i dati con `coworking.contract_details`.
 - Da lì il modello continua come un incarico affidato: `accepted`, la controparte identica a quella ricevuta (`$scelta->transaction->counterparty`), `responded_at` della scelta, `signed_at` alla firma. `audience` ed `expires_at` restano quelli della pubblicazione (R16): un incarico pubblicato per `any` resta `any`. `RecordedTransactionData::toTransaction()` dà la transazione come il sistema la rimanda.
 
 ### Ritiro automatico
