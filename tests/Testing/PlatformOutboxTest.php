@@ -5,8 +5,11 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use ITuoiProfessionistiDigitali\Connector\Contract;
+use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalRecordData;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
+use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Outbox\ProfessionalOutbox;
 use ITuoiProfessionistiDigitali\Connector\Testing\PlatformOutbox;
 use ITuoiProfessionistiDigitali\Connector\Tests\Fixtures\Assignment;
@@ -56,4 +59,16 @@ it('R18: passes when the outbox has the declaration, and only then', function ()
 
     expect(fn () => PlatformOutbox::assertDeclared('RSSMRA80A01H501U', ProfessionalRecordData::from(professional(['province' => 'BA']))))
         ->toThrow(AssertionFailedError::class, 'ultima dichiarazione');
+});
+
+it('E2: passes when the outbox keeps an event of the type, matching the callback, and only then', function (): void {
+    resolve(EventOutbox::class)->queue(EnvelopeData::from(envelope()));
+
+    PlatformOutbox::assertEventQueued(Contract::PING);
+    PlatformOutbox::assertEventQueued(Contract::PING, fn (EnvelopeData $envelope): bool => $envelope->payload === envelope()['payload']);
+    PlatformOutbox::assertEventNotQueued(Contract::PONG);
+
+    expect(fn () => PlatformOutbox::assertEventQueued(Contract::PONG))->toThrow(AssertionFailedError::class, 'platform.pong')
+        ->and(fn () => PlatformOutbox::assertEventQueued(Contract::PING, fn (EnvelopeData $envelope): bool => $envelope->recipient === null))->toThrow(AssertionFailedError::class, 'platform.ping')
+        ->and(fn () => PlatformOutbox::assertEventNotQueued(Contract::PING))->toThrow(AssertionFailedError::class, 'platform.ping');
 });

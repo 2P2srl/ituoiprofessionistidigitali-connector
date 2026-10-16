@@ -154,6 +154,24 @@ $accepted = Platform::send($ping);   // 202 la prima volta, 200 se la stessa bus
 
 Salva la busta prima di mandarla: dopo un timeout si rimanda la stessa, con lo stesso `event_id`.
 
+L'outbox degli eventi lo fa per te. Chiama `queue()` nella stessa transazione del database del cambio che produce l'evento: la busta parte solo se il cambio è salvato, dopo il commit, in coda, sempre identica a ogni tentativo.
+
+```php
+use Illuminate\Support\Facades\DB;
+use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
+
+DB::transaction(function () use ($busta, $incarico): void {
+    $incarico->save();
+    resolve(EventOutbox::class)->queue($busta);
+});
+```
+
+- Il job `SendPlatformEvent` ritenta da solo gli errori di rete, i 5xx e il 403 di un sistema non ancora attivo; `platform:send-outbox` rimette in coda ogni cinque minuti gli eventi rimasti `pending`.
+- Un 422 o un 409, del portale o del pacchetto prima della richiesta, porta la riga di `platform_event_outbox` in `failed`, con `last_error`: è un errore nel codice, da correggere, non da ritentare.
+- La stessa busta passata due volte si tiene una volta sola; lo stesso `event_id` con un altro contenuto è una `LogicException`.
+- Nei test: `PlatformOutbox::assertEventQueued($tipo, fn (EnvelopeData $busta): bool => …)` e `PlatformOutbox::assertEventNotQueued($tipo)`.
+- La tabella è nuova: dopo l'aggiornamento del pacchetto lancia `php artisan migrate`.
+
 Per ricevere, ascolta `PlatformEventReceived`, in coda e in modo idempotente su `event_id`:
 
 ```php

@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace ITuoiProfessionistiDigitali\Connector\Testing;
 
+use Closure;
+use Illuminate\Support\Collection;
 use ITuoiProfessionistiDigitali\Connector\Contracts\RecordsPlatformTransaction;
+use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalRecordData;
+use ITuoiProfessionistiDigitali\Connector\Models\PlatformEventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformProfessionalOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
 use ITuoiProfessionistiDigitali\Connector\Outbox\TransactionOutbox;
@@ -13,7 +17,7 @@ use PHPUnit\Framework\Assert;
 
 /**
  * Assertions for the tests of a system: every action that changes a transaction leaves its current version in the outbox,
- * and every change of the record of a professional leaves its declaration.
+ * every change of the record of a professional leaves its declaration, and every event to another firm its envelope.
  */
 final class PlatformOutbox
 {
@@ -51,5 +55,31 @@ final class PlatformOutbox
             $reference === null || !PlatformTransactionOutbox::query()->where('reference', $reference)->exists(),
             "La transazione {$reference} è nella outbox.",
         );
+    }
+
+    /**
+     * The outbox of the events keeps an event of the type, in any status, matching the callback if given.
+     *
+     * @param  (Closure(EnvelopeData): bool)|null  $callback
+     */
+    public static function assertEventQueued(string $type, ?Closure $callback = null): void
+    {
+        Assert::assertTrue(self::queuedEvents($type)->contains(fn (EnvelopeData $envelope): bool => $callback === null || $callback($envelope)), "Nessun evento {$type} nella outbox degli eventi.");
+    }
+
+    /**
+     * The outbox of the events keeps no event of the type.
+     */
+    public static function assertEventNotQueued(string $type): void
+    {
+        Assert::assertTrue(self::queuedEvents($type)->isEmpty(), "Un evento {$type} è nella outbox degli eventi.");
+    }
+
+    /**
+     * @return Collection<int, EnvelopeData>
+     */
+    private static function queuedEvents(string $type): Collection
+    {
+        return PlatformEventOutbox::query()->where('type', $type)->get()->map(fn (PlatformEventOutbox $row): EnvelopeData => EnvelopeData::from($row->envelope))->values()->toBase();
     }
 }
