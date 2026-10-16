@@ -60,6 +60,17 @@ final class PayloadValidator
     }
 
     /**
+     * A JSON Schema fixed in the package, decoded.
+     *
+     * @return array<string, mixed>
+     */
+    public static function schemaAt(string $path): array
+    {
+        /** @var array<string, mixed> */
+        return json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
      * Checks a payload against a JSON Schema, with the keys the platform uses under its field
      * (`payload.challenge`, `activities.0.description.process`), and answers the ids of the files it cites, in the
      * fields of the format platform-file (rule E12).

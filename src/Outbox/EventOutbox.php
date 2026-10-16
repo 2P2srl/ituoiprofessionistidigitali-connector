@@ -39,7 +39,9 @@ final readonly class EventOutbox
      */
     public function queue(EnvelopeData $envelope, array $files = []): PlatformEventOutbox
     {
-        $kept = $envelope->toArray();
+        // As the JSON column gives it back, so the same envelope again compares equal
+        /** @var array<string, mixed> $kept */
+        $kept = json_decode(json_encode($envelope->toArray(), JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
         EnvelopeData::validate($kept);
 
         $refs = array_map(static fn (OutgoingFileData $file): string => $file->ref, $files);

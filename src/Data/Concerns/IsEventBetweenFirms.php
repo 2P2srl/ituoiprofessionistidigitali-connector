@@ -36,9 +36,7 @@ trait IsEventBetweenFirms
     {
         $payload = $this->toPayload();
 
-        /** @var array<string, mixed> $schema */
-        $schema = json_decode((string) file_get_contents(Contract::schemaPath(self::TYPE, 1)), true, flags: JSON_THROW_ON_ERROR);
-        $files = array_values(array_unique(PayloadValidator::validateSchema($schema, $payload)));
+        $files = array_values(array_unique(PayloadValidator::validateSchema(PayloadValidator::schemaAt(Contract::schemaPath(self::TYPE, 1)), $payload)));
 
         return EnvelopeData::make(
             type: self::TYPE,

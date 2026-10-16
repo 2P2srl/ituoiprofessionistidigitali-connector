@@ -491,11 +491,12 @@ final readonly class PlatformClient
      * POST /files: uploads a file of a disk of the system for an event from sender to recipient, a member of another
      * system (rules F1–F4). The SHA-256 is computed reading the file, with constant memory. The same upload_id again
      * answers with the file already uploaded (rule F2); after a 410 the file needs a new upload_id. Network errors,
-     * 5xx and a short 429 are retried here, reopening the file at every attempt.
+     * 5xx and a short 429 are retried here, reopening the file at every attempt. Pass the SHA-256 when it is already
+     * known, to spare a reading of the file.
      *
      * @throws InvalidArgumentException when the disk cannot read the file
      */
-    public function uploadFile(string $uploadId, string $sender, string $recipient, string $disk, string $path, string $name, string $mediaType): FileData
+    public function uploadFile(string $uploadId, string $sender, string $recipient, string $disk, string $path, string $name, string $mediaType, ?string $sha256 = null): FileData
     {
         $fields = [
             'upload_id' => $uploadId,
@@ -503,7 +504,7 @@ final readonly class PlatformClient
             'recipient' => $recipient,
             'name' => $name,
             'media_type' => $mediaType,
-            'sha256' => FileHash::of($disk, $path),
+            'sha256' => $sha256 ?? FileHash::of($disk, $path),
         ];
 
         return FileData::from($this->data($this->upload($fields, $disk, $path, $name)));
@@ -528,7 +529,7 @@ final readonly class PlatformClient
     {
         try
         {
-            $response = $this->request('GET', 'files/'.rawurlencode($file->id), options: ['stream' => true]);
+            $response = $this->request('GET', 'files/'.rawurlencode($file->id), options: ['stream' => true, 'timeout' => $this->config->fileTimeout]);
         }
         catch (PlatformRequestException $exception)
         {
@@ -539,23 +540,27 @@ final readonly class PlatformClient
         $copy = tmpfile();
         $hash = hash_init('sha256');
 
-        while (!$body->eof())
+        try
         {
-            $chunk = $body->read(1_048_576);
-            hash_update($hash, $chunk);
-            fwrite($copy, $chunk);
-        }
+            while (!$body->eof())
+            {
+                $chunk = $body->read(1_048_576);
+                hash_update($hash, $chunk);
+                fwrite($copy, $chunk);
+            }
 
-        if (hash_final($hash) !== $file->sha256)
+            if (hash_final($hash) !== $file->sha256)
+            {
+                throw new FileIntegrityException($file->id);
+            }
+
+            rewind($copy);
+            Storage::disk($disk)->writeStream($path, $copy);
+        }
+        finally
         {
             fclose($copy);
-
-            throw new FileIntegrityException($file->id);
         }
-
-        rewind($copy);
-        Storage::disk($disk)->writeStream($path, $copy);
-        fclose($copy);
     }
 
     /**
@@ -567,11 +572,17 @@ final readonly class PlatformClient
     }
 
     /**
-     * @phpstan-assert-if-true RequestException $exception
+     * The milliseconds to wait before repeating a failed request, or null when it is not repeated: 200 after a 5xx,
+     * Retry-After after a 429 that asks no more than MAX_WAIT_SECONDS (rule T7).
      */
-    private static function isThrottled(mixed $exception): bool
+    private static function retryDelay(Response $response): ?int
     {
-        return $exception instanceof RequestException && $exception->response->status() === 429;
+        return match (true)
+        {
+            $response->serverError() => 200,
+            $response->status() === 429 && self::retryAfter($response) <= self::MAX_WAIT_SECONDS => self::retryAfter($response) * 1000,
+            default => null,
+        };
     }
 
     /**
@@ -593,18 +604,24 @@ final readonly class PlatformClient
     private function upload(array $fields, string $disk, string $path, string $name): Response
     {
         $url = $this->config->apiUrl('files');
-        $hasNewToken = false;
+        $parts = array_map(static fn (string $field, string $value): array => ['name' => $field, 'contents' => $value], array_keys($fields), $fields);
+        $post = fn (): Response => $this->http->timeout($this->config->fileTimeout)->acceptJson()->withToken($this->accessToken())->asMultipart()
+            ->post($url, [...$parts, ['name' => 'file', 'contents' => FileHash::open($disk, $path), 'filename' => $name]]);
 
         for ($attempt = 1; ; $attempt++)
         {
-            $stream = FileHash::open($disk, $path);
-            $parts = array_map(static fn (string $field, string $value): array => ['name' => $field, 'contents' => $value], array_keys($fields), $fields);
-            $parts[] = ['name' => 'file', 'contents' => $stream, 'filename' => $name];
             $isLast = $attempt > $this->config->retries;
 
             try
             {
-                $response = $this->http->timeout($this->config->fileTimeout)->acceptJson()->withToken($this->accessToken())->asMultipart()->post($url, $parts);
+                $response = $post();
+
+                if ($response->status() === 401)
+                {
+                    // The cached token may have expired early or belong to a rotated secret.
+                    $this->cache->forget($this->tokenCacheKey());
+                    $response = $post();
+                }
             }
             catch (ConnectionException $exception)
             {
@@ -618,28 +635,14 @@ final readonly class PlatformClient
                 continue;
             }
 
-            if ($response->status() === 401 && !$hasNewToken)
-            {
-                $this->cache->forget($this->tokenCacheKey());
-                $hasNewToken = true;
-                $attempt--;
+            $delay = $response->failed() ? self::retryDelay($response) : null;
 
-                continue;
-            }
-
-            $wait = match (true)
-            {
-                $response->serverError() => 200_000,
-                $response->status() === 429 && self::retryAfter($response) <= self::MAX_WAIT_SECONDS => self::retryAfter($response) * 1_000_000,
-                default => null,
-            };
-
-            if ($wait === null || $isLast)
+            if ($delay === null || $isLast)
             {
                 return $response->failed() ? throw $this->exception($response, 'files') : $response;
             }
 
-            Sleep::usleep($wait);
+            Sleep::usleep($delay * 1000);
         }
     }
 
@@ -716,8 +719,7 @@ final readonly class PlatformClient
 
         if ($this->config->validatePayloads && is_file($path))
         {
-            /** @var array<string, mixed> $schema */
-            $schema = json_decode((string) file_get_contents($path), true, flags: JSON_THROW_ON_ERROR);
+            $schema = PayloadValidator::schemaAt($path);
 
             foreach ($transaction->activities as $index => $activity)
             {
@@ -787,10 +789,9 @@ final readonly class PlatformClient
             ->acceptJson()
             ->retry(
                 times: $this->config->retries + 1,
-                sleepMilliseconds: static fn (int $attempt, mixed $exception): int => self::isThrottled($exception) ? self::retryAfter($exception->response) * 1000 : 200,
+                sleepMilliseconds: static fn (int $attempt, mixed $exception): int => $exception instanceof RequestException ? self::retryDelay($exception->response) ?? 200 : 200,
                 when: static fn (Throwable $exception): bool => $exception instanceof ConnectionException
-                    || ($exception instanceof RequestException && $exception->response->serverError())
-                    || (self::isThrottled($exception) && self::retryAfter($exception->response) <= self::MAX_WAIT_SECONDS),
+                    || ($exception instanceof RequestException && self::retryDelay($exception->response) !== null),
                 throw: false,
             );
     }

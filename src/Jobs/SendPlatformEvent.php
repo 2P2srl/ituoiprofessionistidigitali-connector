@@ -99,7 +99,10 @@ final class SendPlatformEvent implements ShouldQueue
 
         foreach ($files as $file)
         {
-            if ($file->file_id !== null && $isRetry && $client->fileStatus($file->file_id)->status === FileStatus::Expired)
+            // A file still citable cannot have expired: only one past its window may need a new upload
+            $mayHaveExpired = $file->citable_until === null || $file->citable_until->isPast();
+
+            if ($file->file_id !== null && $isRetry && $mayHaveExpired && $client->fileStatus($file->file_id)->status === FileStatus::Expired)
             {
                 $file->update(['upload_id' => null, 'file_id' => null, 'citable_until' => null]);
             }
@@ -142,6 +145,7 @@ final class SendPlatformEvent implements ShouldQueue
             path: $file->path,
             name: $file->name,
             mediaType: $file->media_type,
+            sha256: $file->sha256,
         );
 
         try
@@ -166,8 +170,9 @@ final class SendPlatformEvent implements ShouldQueue
 
     private function newUploadId(PlatformEventOutboxFile $file): string
     {
-        $file->update(['upload_id' => (string) Str::uuid7()]);
+        $uploadId = (string) Str::uuid7();
+        $file->update(['upload_id' => $uploadId]);
 
-        return (string) $file->upload_id;
+        return $uploadId;
     }
 }

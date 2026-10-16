@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -147,6 +148,7 @@ it('F5: uploads again with a new upload_id the files that expired before the eve
 
     expect(fn () => sendEventWithFiles())->toThrow(Illuminate\Http\Client\ConnectionException::class);
     $firstUpload = PlatformEventOutboxFile::query()->sole()->upload_id;
+    $this->travelTo(CarbonImmutable::parse('2026-10-17T10:00:01Z'));
     sendEventWithFiles();
 
     $file = PlatformEventOutboxFile::query()->sole();

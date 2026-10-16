@@ -127,5 +127,5 @@ it('F8: answers 2xx to an event with files and hands it to the application only 
         ->assertNoContent();
 
     Event::assertNotDispatched(PlatformEventReceived::class);
-    Queue::assertPushed(ReceivePlatformFiles::class, fn (ReceivePlatformFiles $job): bool => $job->envelope['event_id'] === envelope()['event_id'] && $job->uniqueId() === envelope()['event_id']);
+    Queue::assertPushed(ReceivePlatformFiles::class, fn (ReceivePlatformFiles $job): bool => $job->envelope->event_id === envelope()['event_id'] && $job->uniqueId() === envelope()['event_id']);
 });

@@ -34,16 +34,11 @@ final class ReceivePlatformFiles implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
-    /**
-     * @param  array<string, mixed>  $envelope  The envelope delivered, as EnvelopeData::toArray() gives it.
-     */
-    public function __construct(public array $envelope) {}
+    public function __construct(public EnvelopeData $envelope) {}
 
     public function uniqueId(): string
     {
-        $eventId = $this->envelope['event_id'] ?? null;
-
-        return is_string($eventId) ? $eventId : '';
+        return $this->envelope->event_id;
     }
 
     /**
@@ -51,7 +46,7 @@ final class ReceivePlatformFiles implements ShouldBeUnique, ShouldQueue
      */
     public function retryUntil(): CarbonImmutable
     {
-        $expiries = array_filter(array_map(static fn (FileReferenceData $file): ?CarbonImmutable => $file->available_until, EnvelopeData::from($this->envelope)->fileReferences()));
+        $expiries = array_filter(array_map(static fn (FileReferenceData $file): ?CarbonImmutable => $file->available_until, $this->envelope->fileReferences()));
 
         return $expiries === [] ? CarbonImmutable::now()->addDays(30) : min($expiries);
     }
@@ -66,13 +61,12 @@ final class ReceivePlatformFiles implements ShouldBeUnique, ShouldQueue
 
     public function handle(PlatformClient $client, ConnectorConfig $config, Dispatcher $events): void
     {
-        $envelope = EnvelopeData::from($this->envelope);
         $files = array_map(
-            fn (FileReferenceData $file): ReceivedFileData => $this->receive($client, $config->filesDisk, $envelope->event_id, $file),
-            $envelope->fileReferences(),
+            fn (FileReferenceData $file): ReceivedFileData => $this->receive($client, $config->filesDisk, $this->envelope->event_id, $file),
+            $this->envelope->fileReferences(),
         );
 
-        $events->dispatch(new PlatformEventReceived($envelope, $files));
+        $events->dispatch(new PlatformEventReceived($this->envelope, $files));
     }
 
     private function receive(PlatformClient $client, string $disk, string $eventId, FileReferenceData $file): ReceivedFileData

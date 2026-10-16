@@ -36,7 +36,7 @@ beforeEach(function (): void {
 
 function receive(): void
 {
-    new ReceivePlatformFiles(test()->envelope)->handle(resolve(PlatformClient::class), resolve(ITuoiProfessionistiDigitali\Connector\ConnectorConfig::class), resolve(Illuminate\Contracts\Events\Dispatcher::class));
+    new ReceivePlatformFiles(ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData::from(test()->envelope))->handle(resolve(PlatformClient::class), resolve(ITuoiProfessionistiDigitali\Connector\ConnectorConfig::class), resolve(Illuminate\Contracts\Events\Dispatcher::class));
 }
 
 function platformServing(mixed $download, mixed $receipt = null): void
@@ -102,10 +102,10 @@ it('F8: saves and confirms nothing, and does not hand the event, when the downlo
 });
 
 it('F9: keeps trying until the files are available, one job per event', function (): void {
-    $job = new ReceivePlatformFiles($this->envelope);
+    $job = new ReceivePlatformFiles(ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData::from($this->envelope));
 
     expect($job->uniqueId())->toBe(envelope()['event_id'])
         ->and($job->backoff())->toBe([60, 300, 900, 1800, 3600])
         ->and($job->retryUntil()->toIso8601ZuluString())->toBe('2026-11-15T10:00:00Z')
-        ->and(new ReceivePlatformFiles(envelope(['files' => [[...$this->envelope['files'][0], 'available_until' => null]]]))->retryUntil()->toIso8601ZuluString())->toBe('2026-11-15T10:00:00Z');
+        ->and(new ReceivePlatformFiles(ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData::from(envelope(['files' => [[...$this->envelope['files'][0], 'available_until' => null]]])))->retryUntil()->toIso8601ZuluString())->toBe('2026-11-15T10:00:00Z');
 });

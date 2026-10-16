@@ -73,16 +73,14 @@ final readonly class WebhookController
             $outbox->changedByPlatform($changed);
         }
 
-        if ($envelope->fileReferences() !== [])
+        if ($envelope->fileReferences() === [])
         {
-            /** @var array<string, mixed> $delivered */
-            $delivered = $envelope->toArray();
-            dispatch(new ReceivePlatformFiles($delivered))->onQueue($config->queue);
-
-            return response()->noContent();
+            $events->dispatch(new PlatformEventReceived($envelope));
         }
-
-        $events->dispatch(new PlatformEventReceived($envelope));
+        else
+        {
+            dispatch(new ReceivePlatformFiles($envelope))->onQueue($config->queue);
+        }
 
         return response()->noContent();
     }
