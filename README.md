@@ -321,6 +321,28 @@ if ($envelope->type === Contract::COUNTERPARTY_SELECTED)
 - Scelto uno studio, la controparte è `{"type": "member", "member_id": …}` con i campi della persona a `null`, anche se l'aderente è di un altro sistema, e `contact` è `null`: i due studi si scambiano i dati con `coworking.contract_details`.
 - Da lì il modello continua come un incarico affidato: `accepted`, la controparte identica a quella ricevuta (`$scelta->transaction->counterparty`), `responded_at` della scelta, `signed_at` alla firma. `audience` ed `expires_at` restano quelli della pubblicazione (R16): un incarico pubblicato per `any` resta `any`. `RecordedTransactionData::toTransaction()` dà la transazione come il sistema la rimanda.
 
+### Candidarsi come studio
+
+Un aderente del sistema si candida agli incarichi pubblicati per gli studi da committenti di **altri** sistemi (L1, L10). Il committente resta anonimo fino alla scelta: dell'inserzione esce solo la sede (L7).
+
+```php
+use ITuoiProfessionistiDigitali\Connector\Facades\Platform;
+
+$pagina = Platform::listings('commercialisti', perPage: 25);   // ListingPage, dalla più recente
+$inserzione = Platform::listing($id);                          // ListingData
+
+// Prima raccogli il consenso esplicito di chi decide per lo studio: candidarsi accetta le condizioni
+$candidatura = Platform::apply($inserzione->id, $idAderente);  // MemberApplicationData, pending
+Platform::withdrawApplication($inserzione->id, $candidatura->id);
+
+$mie = Platform::memberApplications($idAderente, ApplicationStatus::Pending);   // MemberApplicationPage
+```
+
+- `ListingData` ha l'id della transazione, la tipologia, `audience`, titolo e testo, la sede del committente (`ListingPrincipalData`), `sent_at`, `expires_at`, i totali e le attività (`ListingActivityData`) con compenso, minuti previsti, totale e descrizione col processo. `revision` è quella di cui la candidatura accetta le condizioni.
+- `apply()` manda sempre `terms_accepted: true`: chiamalo solo dopo il consenso. La stessa candidatura ripetuta risponde con quella esistente.
+- Le eccezioni non si ritentano: `ListingNotFoundException` (404, inserzione non più visibile), `ApplicationRefusedException` (422 su `member`: aderente non attivo, senza la tipologia o candidatura già ritirata, con i messaggi in `->messages`), `ApplicationNotFoundException` (404 sul ritiro, candidatura di un altro sistema) e `ApplicationNotWithdrawableException` (422 sul ritiro, candidatura già scelta o rifiutata).
+- `memberApplications()` dice come sono andate le candidature: `declined` è un'altra scelta o l'incarico ritirato; `selected` arriva insieme a `transaction.assignment_received`, e da lì la transazione esce anche in `Platform::transactions()`.
+
 ### Ritiro automatico
 
 Un incarico ancora `published` senza una scelta lo ritira il portale, alcuni giorni dopo `expires_at`: 30, ma li configura l'operatore del portale, quindi il sistema non ci conta come su un valore fisso (regola L9). Il portale porta la transazione in `withdrawn`, con `closed_at` all'istante del ritiro e la revisione registrata più 1, chiude le candidature `pending` come `declined` e manda `transaction.withdrawn` al sistema del committente. Il ritiro fatto dal sistema con un `PUT` non genera eventi.

@@ -12,6 +12,8 @@ use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\EventTypeData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListingData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListingPage;
+use ITuoiProfessionistiDigitali\Connector\Data\MemberApplicationData;
+use ITuoiProfessionistiDigitali\Connector\Data\MemberApplicationPage;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberData;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberPage;
 use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalRecordData;
@@ -36,6 +38,9 @@ use ITuoiProfessionistiDigitali\Connector\PlatformClient;
  * @method static RecordedTransactionData selectApplication(string $reference, string $applicationId)
  * @method static ListingPage listings(?string $typology = null, ?int $perPage = null, ?string $cursor = null)
  * @method static ListingData listing(string $listingId)
+ * @method static MemberApplicationData apply(string $listingId, string $memberId)
+ * @method static MemberApplicationData withdrawApplication(string $listingId, string $applicationId)
+ * @method static MemberApplicationPage memberApplications(?string $memberId = null, ?ApplicationStatus $status = null, ?int $perPage = null, ?string $cursor = null)
  *
  * @see PlatformClient
  */

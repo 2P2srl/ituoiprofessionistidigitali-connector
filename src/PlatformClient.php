@@ -22,6 +22,8 @@ use ITuoiProfessionistiDigitali\Connector\Data\EventTypeData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListedMemberData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListingData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListingPage;
+use ITuoiProfessionistiDigitali\Connector\Data\MemberApplicationData;
+use ITuoiProfessionistiDigitali\Connector\Data\MemberApplicationPage;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberData;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberPage;
 use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalRecordData;
@@ -35,7 +37,10 @@ use ITuoiProfessionistiDigitali\Connector\Data\TypologyData;
 use ITuoiProfessionistiDigitali\Connector\Enums\ApplicationStatus;
 use ITuoiProfessionistiDigitali\Connector\Enums\Audience;
 use ITuoiProfessionistiDigitali\Connector\Enums\SystemStatus;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationNotSelectableException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationNotWithdrawableException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationRefusedException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ConcurrentMemberSyncException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ListingNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberEmailsRejectedException;
@@ -393,18 +398,100 @@ final readonly class PlatformClient
     }
 
     /**
+     * POST /listings/{id}/applications: applies a member of the system to a listing (rule L10). Applying means accepting
+     * the conditions of the assignment at its revision, with an explicit consent: collect it in the system, from who
+     * decides for the firm, before calling. The same application again answers with the existing one.
+     *
+     * @throws ListingNotFoundException
+     * @throws ApplicationRefusedException
+     */
+    public function apply(string $listingId, string $memberId): MemberApplicationData
+    {
+        try
+        {
+            $response = $this->request('POST', 'listings/'.rawurlencode($listingId).'/applications', ['member' => $memberId, 'terms_accepted' => true]);
+        }
+        catch (PlatformRequestException $exception)
+        {
+            throw match (true)
+            {
+                $exception->status === 404 => new ListingNotFoundException($listingId),
+                $this->refusedOn($exception) === 'member' => new ApplicationRefusedException($listingId, $memberId, $exception->errors['member'], $exception),
+                default => $exception,
+            };
+        }
+
+        return MemberApplicationData::from($this->data($response));
+    }
+
+    /**
+     * POST /listings/{id}/applications/{application}/withdrawal: withdraws a pending application of a member of the
+     * system (rule L3). Withdrawing it again answers with the application as it is.
+     *
+     * @throws ApplicationNotFoundException
+     * @throws ApplicationNotWithdrawableException
+     */
+    public function withdrawApplication(string $listingId, string $applicationId): MemberApplicationData
+    {
+        try
+        {
+            $response = $this->request('POST', 'listings/'.rawurlencode($listingId).'/applications/'.rawurlencode($applicationId).'/withdrawal');
+        }
+        catch (PlatformRequestException $exception)
+        {
+            throw match (true)
+            {
+                $exception->status === 404 => new ApplicationNotFoundException($listingId, $applicationId),
+                $this->refusedOn($exception) === 'status' => new ApplicationNotWithdrawableException($listingId, $applicationId, $exception->errors['status'], $exception),
+                default => $exception,
+            };
+        }
+
+        return MemberApplicationData::from($this->data($response));
+    }
+
+    /**
+     * GET /applications: the applications of the members of the system, the most recent first, also those decided
+     * by the platform (rules L3 and L10).
+     */
+    public function memberApplications(?string $memberId = null, ?ApplicationStatus $status = null, ?int $perPage = null, ?string $cursor = null): MemberApplicationPage
+    {
+        $response = $this->request('GET', 'applications', $this->query([
+            'member' => $memberId,
+            'status' => $status?->value,
+            'per_page' => $perPage,
+            'cursor' => $cursor,
+        ]));
+
+        return new MemberApplicationPage(
+            applications: array_map(MemberApplicationData::from(...), $this->list($response)),
+            nextCursor: $this->cursor($response, 'next_cursor'),
+        );
+    }
+
+    /**
+     * The only field a 422 refused, if it refused just one.
+     */
+    private function refusedOn(PlatformRequestException $exception): ?string
+    {
+        $fields = $exception->isContractViolation() ? array_keys($exception->errors) : [];
+
+        return count($fields) === 1 ? (string) $fields[0] : null;
+    }
+
+    /**
      * The refusals of the selection as their own exceptions: the transaction not of the system, the application that
      * cannot be selected, the transaction no longer published. Any other refusal stays as it is.
      */
     private function selectionRefusal(PlatformRequestException $exception, string $reference, string $applicationId): PlatformException
     {
-        $fields = $exception->isContractViolation() ? array_keys($exception->errors) : [];
+        $field = $this->refusedOn($exception);
 
         return match (true)
         {
             $exception->status === 404 => new TransactionNotFoundException($reference),
-            $fields === ['application'] => new ApplicationNotSelectableException($reference, $applicationId, $exception->errors['application'], $exception),
-            $fields === ['status'] => new TransactionNotPublishedException($reference, $exception->errors['status'], $exception),
+            $field === 'application' => new ApplicationNotSelectableException($reference, $applicationId, $exception->errors['application'], $exception),
+            $field === 'status' => new TransactionNotPublishedException($reference, $exception->errors['status'], $exception),
             default => $exception,
         };
     }
