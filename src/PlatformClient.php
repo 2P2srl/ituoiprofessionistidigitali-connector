@@ -12,13 +12,18 @@ use Illuminate\Http\Client\Factory as Http;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 use ITuoiProfessionistiDigitali\Connector\Data\AcceptedEventData;
 use ITuoiProfessionistiDigitali\Connector\Data\AccessLinkData;
 use ITuoiProfessionistiDigitali\Connector\Data\ApplicationData;
 use ITuoiProfessionistiDigitali\Connector\Data\ApplicationPage;
 use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\EventTypeData;
+use ITuoiProfessionistiDigitali\Connector\Data\FileData;
+use ITuoiProfessionistiDigitali\Connector\Data\FileReferenceData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListedMemberData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListingData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListingPage;
@@ -42,6 +47,8 @@ use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationNotSelectableExc
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationNotWithdrawableException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationRefusedException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ConcurrentMemberSyncException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\FileGoneException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\FileIntegrityException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ListingNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberEmailsRejectedException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberNotAccessibleException;
@@ -480,6 +487,85 @@ final readonly class PlatformClient
     }
 
     /**
+     * POST /files: uploads a file of a disk of the system for an event from sender to recipient, a member of another
+     * system (rules F1–F4). The SHA-256 is computed reading the file, with constant memory. The same upload_id again
+     * answers with the file already uploaded (rule F2); after a 410 the file needs a new upload_id. Network errors,
+     * 5xx and a short 429 are retried here, reopening the file at every attempt.
+     *
+     * @throws InvalidArgumentException when the disk cannot read the file
+     */
+    public function uploadFile(string $uploadId, string $sender, string $recipient, string $disk, string $path, string $name, string $mediaType): FileData
+    {
+        $fields = [
+            'upload_id' => $uploadId,
+            'sender' => $sender,
+            'recipient' => $recipient,
+            'name' => $name,
+            'media_type' => $mediaType,
+            'sha256' => self::sha256(self::readStream($disk, $path)),
+        ];
+
+        return FileData::from($this->data($this->upload($fields, $disk, $path, $name)));
+    }
+
+    /**
+     * GET /files/{id}/status: the file and its status, for its sender and its recipient (rule F5).
+     */
+    public function fileStatus(string $fileId): FileData
+    {
+        return FileData::from($this->data($this->request('GET', 'files/'.rawurlencode($fileId).'/status')));
+    }
+
+    /**
+     * GET /files/{id}: downloads a file of an envelope delivered to the system and saves it on a disk, only if its
+     * SHA-256 is the one of the envelope (rules F7 and F8). Confirm it after with confirmFile().
+     *
+     * @throws FileGoneException
+     * @throws FileIntegrityException
+     */
+    public function downloadFile(FileReferenceData $file, string $disk, string $path): void
+    {
+        try
+        {
+            $response = $this->request('GET', 'files/'.rawurlencode($file->id), options: ['stream' => true]);
+        }
+        catch (PlatformRequestException $exception)
+        {
+            throw $exception->status === 410 ? new FileGoneException($file->id) : $exception;
+        }
+
+        $body = $response->toPsrResponse()->getBody();
+        $copy = tmpfile();
+        $hash = hash_init('sha256');
+
+        while (!$body->eof())
+        {
+            $chunk = $body->read(1_048_576);
+            hash_update($hash, $chunk);
+            fwrite($copy, $chunk);
+        }
+
+        if (hash_final($hash) !== $file->sha256)
+        {
+            fclose($copy);
+
+            throw new FileIntegrityException($file->id);
+        }
+
+        rewind($copy);
+        Storage::disk($disk)->writeStream($path, $copy);
+        fclose($copy);
+    }
+
+    /**
+     * POST /files/{id}/receipt: confirms a file saved and checked, and the platform deletes it (rule F8).
+     */
+    public function confirmFile(string $fileId, string $sha256): FileData
+    {
+        return FileData::from($this->data($this->request('POST', 'files/'.rawurlencode($fileId).'/receipt', ['sha256' => $sha256])));
+    }
+
+    /**
      * @phpstan-assert-if-true RequestException $exception
      */
     private static function isThrottled(mixed $exception): bool
@@ -495,6 +581,96 @@ final readonly class PlatformClient
         $seconds = $response->header('Retry-After');
 
         return ctype_digit($seconds) ? (int) $seconds : self::DEFAULT_RETRY_AFTER_SECONDS;
+    }
+
+    /**
+     * @return resource
+     *
+     * @throws InvalidArgumentException
+     */
+    private static function readStream(string $disk, string $path)
+    {
+        $stream = Storage::disk($disk)->readStream($path);
+
+        if (!is_resource($stream))
+        {
+            throw new InvalidArgumentException("Il file {$path} del disco {$disk} non si legge.");
+        }
+
+        return $stream;
+    }
+
+    /**
+     * The SHA-256 of a stream, read once, in lower case hexadecimal (rule F3).
+     *
+     * @param  resource  $stream
+     */
+    private static function sha256($stream): string
+    {
+        $hash = hash_init('sha256');
+        hash_update_stream($hash, $stream);
+        fclose($stream);
+
+        return hash_final($hash);
+    }
+
+    /**
+     * The multipart request of an upload, with the fields before the content (rule F4), and its own retries: the
+     * retries of the HTTP client would send again a stream already read. Guzzle closes each stream it releases.
+     *
+     * @param  array<string, string>  $fields
+     */
+    private function upload(array $fields, string $disk, string $path, string $name): Response
+    {
+        $url = $this->config->apiUrl('files');
+        $hasNewToken = false;
+
+        for ($attempt = 1; ; $attempt++)
+        {
+            $stream = self::readStream($disk, $path);
+            $parts = array_map(static fn (string $field, string $value): array => ['name' => $field, 'contents' => $value], array_keys($fields), $fields);
+            $parts[] = ['name' => 'file', 'contents' => $stream, 'filename' => $name];
+            $isLast = $attempt > $this->config->retries;
+
+            try
+            {
+                $response = $this->http->timeout($this->config->fileTimeout)->acceptJson()->withToken($this->accessToken())->asMultipart()->post($url, $parts);
+            }
+            catch (ConnectionException $exception)
+            {
+                if ($isLast)
+                {
+                    throw $exception;
+                }
+
+                Sleep::usleep(200_000);
+
+                continue;
+            }
+
+            if ($response->status() === 401 && !$hasNewToken)
+            {
+                $this->cache->forget($this->tokenCacheKey());
+                $hasNewToken = true;
+                $attempt--;
+
+                continue;
+            }
+
+            $wait = match (true)
+            {
+                $response->serverError() => 200_000,
+                $response->status() === 429 && self::retryAfter($response) <= self::MAX_WAIT_SECONDS => self::retryAfter($response) * 1_000_000,
+                default => null,
+            };
+
+            if ($wait === null || $isLast)
+            {
+                return $response->failed() ? throw $this->exception($response, 'files') : $response;
+            }
+
+            Sleep::usleep($wait);
+        }
     }
 
     /**
@@ -607,22 +783,23 @@ final readonly class PlatformClient
 
     /**
      * @param  array<string, mixed>  $body
+     * @param  array<string, mixed>  $options  Options of Guzzle, such as stream for a download.
      *
      * @throws PlatformNotConfiguredException
      * @throws PlatformRequestException
      */
-    private function request(string $method, string $path, array $body = []): Response
+    private function request(string $method, string $path, array $body = [], array $options = []): Response
     {
         $url = $this->config->apiUrl($path);
 
-        $response = $this->pending()->withToken($this->accessToken())->send($method, $url, $this->options($method, $body));
+        $response = $this->pending()->withToken($this->accessToken())->send($method, $url, [...$this->options($method, $body), ...$options]);
 
         if ($response->status() === 401)
         {
             // The cached token may have expired early or belong to a rotated secret.
             $this->cache->forget($this->tokenCacheKey());
 
-            $response = $this->pending()->withToken($this->accessToken())->send($method, $url, $this->options($method, $body));
+            $response = $this->pending()->withToken($this->accessToken())->send($method, $url, [...$this->options($method, $body), ...$options]);
         }
 
         if ($response->failed())

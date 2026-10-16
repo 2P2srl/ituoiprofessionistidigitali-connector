@@ -23,6 +23,8 @@ final readonly class ConnectorConfig
         public int $retries = 2,
         public bool $validatePayloads = true,
         public int $catalogTtl = 3600,
+        public int $fileTimeout = 120,
+        public string $filesDisk = 'local',
     ) {}
 
     /**
@@ -42,6 +44,8 @@ final readonly class ConnectorConfig
             retries: self::integer($config, 'retries', 2),
             validatePayloads: (bool) ($config['validate_payloads'] ?? true),
             catalogTtl: self::integer($config, 'catalog_ttl', 3600),
+            fileTimeout: self::integer($config, 'file_timeout', 120),
+            filesDisk: self::string($config, 'files_disk') ?? 'local',
         );
     }
 

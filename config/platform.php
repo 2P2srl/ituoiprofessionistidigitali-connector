@@ -69,4 +69,20 @@ return [
 
     'catalog_ttl' => (int) env('PLATFORM_CATALOG_TTL', 3600),
 
+    /*
+    |--------------------------------------------------------------------------
+    | File fra sistemi
+    |--------------------------------------------------------------------------
+    |
+    | `file_timeout` è il tempo massimo, in secondi, per caricare o scaricare un
+    | file (al massimo 25 MB). `files_disk` è il disco dove il webhook salva i
+    | file ricevuti, in `platform-files/{event_id}/{file_id}`, prima di passare
+    | l'evento all'applicazione.
+    |
+    */
+
+    'file_timeout' => (int) env('PLATFORM_FILE_TIMEOUT', 120),
+
+    'files_disk' => env('PLATFORM_FILES_DISK', 'local'),
+
 ];

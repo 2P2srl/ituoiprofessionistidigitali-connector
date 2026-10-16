@@ -49,30 +49,6 @@ function contractDetails(array $party = [], array $signatory = []): array
 /**
  * @return array<string, mixed>
  */
-function activitiesAssigned(array $activity = []): array
-{
-    return [
-        'transaction' => ['id' => COWORKING_TRANSACTION],
-        'processes' => [[
-            'reference' => 'pratica-812',
-            'name' => 'Contabilità ordinaria',
-            'client' => ['name' => 'Bianchi Srl', 'tax_code' => '01234567897'],
-            'activities' => [[
-                'reference' => '43',
-                'name' => 'Registrazione fatture',
-                'deadline' => '2026-11-30',
-                'fixed_amount_cents' => 90000,
-                'estimated_minutes' => 1200,
-                'guides' => [['title' => 'Registrazione fatture', 'body' => 'Le fatture **passive** prima.', 'attachments' => ['0199c1a0-0000-7000-8000-000000000001']]],
-                ...$activity,
-            ]],
-        ]],
-    ];
-}
-
-/**
- * @return array<string, mixed>
- */
 function activityStatus(array $overrides = []): array
 {
     return ['transaction' => ['id' => COWORKING_TRANSACTION], 'activity' => '43', 'status' => 'completed', 'occurred_at' => '2026-11-20T09:30:00+00:00', ...$overrides];
@@ -113,6 +89,15 @@ it('E13: builds the envelope of an event between firms, correlated to the transa
     'activity completed' => [Contract::ACTIVITY_STATUS, ActivityStatusData::class, activityStatus()],
     'activity reopened' => [Contract::ACTIVITY_STATUS, ActivityStatusData::class, activityStatus(['status' => 'reopened'])],
 ]);
+
+it('E12: lists in the envelope the files the payload cites, once each', function (): void {
+    $guide = ['title' => 'Altra guida', 'body' => 'Testo.', 'attachments' => ['0199c1a0-0000-7000-8000-000000000001', '0199c1a0-0000-7000-8000-000000000002']];
+    $payload = activitiesAssigned(['guides' => [...activitiesAssigned()['processes'][0]['activities'][0]['guides'], $guide]]);
+
+    expect(ActivitiesAssignedData::from($payload)->toEnvelope(PRINCIPAL_MEMBER, SELECTED_MEMBER, 'commercialisti')->fileIds())
+        ->toBe(['0199c1a0-0000-7000-8000-000000000001', '0199c1a0-0000-7000-8000-000000000002'])
+        ->and(ActivityStatusData::from(activityStatus())->toEnvelope(SELECTED_MEMBER, PRINCIPAL_MEMBER, 'commercialisti')->fileIds())->toBe([]);
+});
 
 it('E2: keeps the event_id given to the envelope', function (): void {
     $envelope = ActivityStatusData::from(activityStatus())->toEnvelope(SELECTED_MEMBER, PRINCIPAL_MEMBER, 'commercialisti', eventId: '0199b6f2-0000-7000-8000-000000000042');

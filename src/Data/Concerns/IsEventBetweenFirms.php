@@ -11,7 +11,7 @@ use ITuoiProfessionistiDigitali\Connector\Validation\PayloadValidator;
 
 /**
  * The payload of an event between the two firms of a transaction (rule E13): the envelope correlated to the
- * transaction, checked on the schema fixed in the package before it leaves.
+ * transaction, checked on the schema fixed in the package before it leaves, with the files the payload cites.
  */
 trait IsEventBetweenFirms
 {
@@ -38,7 +38,7 @@ trait IsEventBetweenFirms
 
         /** @var array<string, mixed> $schema */
         $schema = json_decode((string) file_get_contents(Contract::schemaPath(self::TYPE, 1)), true, flags: JSON_THROW_ON_ERROR);
-        PayloadValidator::validateSchema($schema, $payload);
+        $files = array_values(array_unique(PayloadValidator::validateSchema($schema, $payload)));
 
         return EnvelopeData::make(
             type: self::TYPE,
@@ -49,6 +49,7 @@ trait IsEventBetweenFirms
             payload: $payload,
             correlationId: $this->transaction->id,
             eventId: $eventId,
+            files: $files,
         );
     }
 }

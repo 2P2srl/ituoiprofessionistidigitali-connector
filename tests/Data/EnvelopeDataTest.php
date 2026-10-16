@@ -111,3 +111,49 @@ it('E1: sends the date in RFC 3339 and an empty payload as a JSON object', funct
         ->and(json_encode($wire['payload']))->toBe('{}')
         ->and(array_keys($wire))->toBe(array_keys(envelope()));
 });
+
+it('E12: makes an event with the ids of its files, and sends no files key without files', function (): void {
+    $withFiles = EnvelopeData::make(Contract::PING, 1, envelope()['sender'], envelope()['recipient'], 'commercialisti', ['challenge' => 'a1b2c3d4e5f6a7b8'], files: ['0199c1a0-0000-7000-8000-000000000001']);
+    $withoutFiles = EnvelopeData::make(Contract::PING, 1, envelope()['sender'], envelope()['recipient'], 'commercialisti', ['challenge' => 'a1b2c3d4e5f6a7b8']);
+
+    expect($withFiles->toWire()['files'])->toBe(['0199c1a0-0000-7000-8000-000000000001'])
+        ->and($withFiles->fileIds())->toBe(['0199c1a0-0000-7000-8000-000000000001'])
+        ->and($withoutFiles->toWire())->not->toHaveKey('files')
+        ->and($withoutFiles->fileIds())->toBe([])
+        ->and($withoutFiles->fileReferences())->toBe([]);
+});
+
+it('E12: reads the files of a delivered envelope, with what it takes to download and check them', function (): void {
+    $delivered = EnvelopeData::from(envelope(['files' => [[
+        'id' => '0199c1a0-0000-7000-8000-000000000001',
+        'name' => 'Guida.pdf',
+        'media_type' => 'application/pdf',
+        'size' => 482113,
+        'sha256' => str_repeat('a', 64),
+        'available_until' => '2026-11-15T10:00:00Z',
+    ]]]));
+
+    expect($delivered->fileIds())->toBe(['0199c1a0-0000-7000-8000-000000000001'])
+        ->and($delivered->fileReferences()[0])
+        ->name->toBe('Guida.pdf')
+        ->size->toBe(482113)
+        ->and($delivered->fileReferences()[0]->available_until?->toIso8601ZuluString())->toBe('2026-11-15T10:00:00Z')
+        ->and($delivered->toWire()['files'])->toBe(['0199c1a0-0000-7000-8000-000000000001'])
+        ->and($delivered->reply(Contract::PONG, 1, ['challenge' => 'a1b2c3d4e5f6a7b8'])->fileIds())->toBe([]);
+});
+
+it('E12: refuses files that are not a list of distinct ids, or more than 20', function (array $files, string $field): void {
+    try
+    {
+        EnvelopeData::make(Contract::PING, 1, envelope()['sender'], envelope()['recipient'], 'commercialisti', ['challenge' => 'a1b2c3d4e5f6a7b8'], files: $files);
+        $this->fail('The envelope should be refused.');
+    }
+    catch (ValidationException $exception)
+    {
+        expect($exception->errors())->toHaveKey($field);
+    }
+})->with([
+    'not an id' => [['guida.pdf'], 'files.0'],
+    'the same file twice' => [['0199c1a0-0000-7000-8000-000000000001', '0199c1a0-0000-7000-8000-000000000001'], 'files.1'],
+    '21 files' => [array_map(static fn (int $index): string => sprintf('0199c1a0-0000-7000-8000-%012d', $index), range(1, 21)), 'files'],
+]);

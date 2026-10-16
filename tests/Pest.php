@@ -357,3 +357,30 @@ function matchesSchema(string $type, array $payload): bool
 
     return new Validator()->validate(json_decode((string) json_encode($payload)), $schema)->isValid();
 }
+
+/**
+ * The payload of coworking.activities_assigned v1: one process with its final client, one activity with a guide
+ * and its file.
+ *
+ * @return array<string, mixed>
+ */
+function activitiesAssigned(array $activity = []): array
+{
+    return [
+        'transaction' => ['id' => '0199b6f5-0000-7000-8000-000000000001'],
+        'processes' => [[
+            'reference' => 'pratica-812',
+            'name' => 'Contabilità ordinaria',
+            'client' => ['name' => 'Bianchi Srl', 'tax_code' => '01234567897'],
+            'activities' => [[
+                'reference' => '43',
+                'name' => 'Registrazione fatture',
+                'deadline' => '2026-11-30',
+                'fixed_amount_cents' => 90000,
+                'estimated_minutes' => 1200,
+                'guides' => [['title' => 'Registrazione fatture', 'body' => 'Le fatture **passive** prima.', 'attachments' => ['0199c1a0-0000-7000-8000-000000000001']]],
+                ...$activity,
+            ]],
+        ]],
+    ];
+}

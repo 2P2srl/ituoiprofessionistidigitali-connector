@@ -20,11 +20,15 @@ use stdClass;
  *
  * Build an outgoing event with make() or reply(): both validate it as POST /events does (rule E1).
  * Read an incoming one with from(): fields the package does not know are ignored (rule W2).
+ *
+ * The files have two forms (rule E12): an outgoing envelope lists their ids, a delivered one their metadata, read with
+ * fileReferences(). An envelope without files has no files key on the wire.
  */
 final class EnvelopeData extends Data
 {
     /**
      * @param  array<string, mixed>  $payload
+     * @param  list<string>|list<array<string, mixed>>|null  $files
      */
     public function __construct(
         public string $event_id,
@@ -38,12 +42,14 @@ final class EnvelopeData extends Data
         public ?string $typology,
         public ?string $correlation_id,
         public array $payload,
+        public ?array $files = null,
     ) {}
 
     /**
      * A new event from one of the system's members, with a fresh UUID v7 and the current time.
      *
      * @param  array<string, mixed>  $payload
+     * @param  list<string>  $files  The ids of the files uploaded for the event, the ones the payload cites (rule E12).
      */
     public static function make(
         string $type,
@@ -54,6 +60,7 @@ final class EnvelopeData extends Data
         array $payload,
         ?string $correlationId = null,
         ?string $eventId = null,
+        array $files = [],
     ): self {
         return self::validateAndCreate([
             'event_id' => $eventId ?? (string) Str::uuid7(),
@@ -65,6 +72,7 @@ final class EnvelopeData extends Data
             'typology' => $typology,
             'correlation_id' => $correlationId,
             'payload' => $payload,
+            'files' => $files === [] ? null : $files,
         ]);
     }
 
@@ -83,11 +91,34 @@ final class EnvelopeData extends Data
             'typology' => ['required', 'string', 'regex:/^[a-z][a-z0-9_]*$/'],
             'correlation_id' => ['nullable', 'uuid'],
             'payload' => ['present', 'array'],
+            'files' => ['nullable', 'array', 'list', 'max:'.Contract::MAX_FILES_PER_EVENT],
+            'files.*' => ['uuid', 'distinct'],
         ];
     }
 
     /**
-     * The answer to this event: from its recipient to its sender, same typology, correlated to it.
+     * The ids of the files of the envelope, in both forms.
+     *
+     * @return list<string>
+     */
+    public function fileIds(): array
+    {
+        return array_map(static fn (mixed $file): string => is_array($file) && is_string($file['id'] ?? null) ? $file['id'] : (is_string($file) ? $file : ''), $this->files ?? []);
+    }
+
+    /**
+     * The files of a delivered envelope, with what it takes to download them and check them (rule F8).
+     *
+     * @return list<FileReferenceData>
+     */
+    public function fileReferences(): array
+    {
+        return array_values(array_map(FileReferenceData::from(...), array_filter($this->files ?? [], is_array(...))));
+    }
+
+    /**
+     * The answer to this event: from its recipient to its sender, same typology, correlated to it. It never carries
+     * the files of the event.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -136,7 +167,8 @@ final class EnvelopeData extends Data
         /** @var array<string, mixed> $wire */
         $wire = $this->toArray();
         $wire['payload'] = $this->payload === [] ? new stdClass : $this->payload;
+        unset($wire['files']);
 
-        return $wire;
+        return $this->fileIds() === [] ? $wire : [...$wire, 'files' => $this->fileIds()];
     }
 }

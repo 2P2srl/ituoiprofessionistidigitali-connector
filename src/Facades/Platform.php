@@ -10,6 +10,8 @@ use ITuoiProfessionistiDigitali\Connector\Data\AccessLinkData;
 use ITuoiProfessionistiDigitali\Connector\Data\ApplicationPage;
 use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\EventTypeData;
+use ITuoiProfessionistiDigitali\Connector\Data\FileData;
+use ITuoiProfessionistiDigitali\Connector\Data\FileReferenceData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListingData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListingPage;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberApplicationData;
@@ -40,6 +42,10 @@ use ITuoiProfessionistiDigitali\Connector\PlatformClient;
  * @method static ListingData listing(string $listingId)
  * @method static MemberApplicationData apply(string $listingId, string $memberId)
  * @method static MemberApplicationData withdrawApplication(string $listingId, string $applicationId)
+ * @method static FileData uploadFile(string $uploadId, string $sender, string $recipient, string $disk, string $path, string $name, string $mediaType)
+ * @method static FileData fileStatus(string $fileId)
+ * @method static void downloadFile(FileReferenceData $file, string $disk, string $path)
+ * @method static FileData confirmFile(string $fileId, string $sha256)
  * @method static MemberApplicationPage memberApplications(?string $memberId = null, ?ApplicationStatus $status = null, ?int $perPage = null, ?string $cursor = null)
  *
  * @see PlatformClient

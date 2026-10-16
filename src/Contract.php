@@ -89,6 +89,16 @@ final class Contract
     public const int MAX_TRANSACTIONS = 500;
 
     /**
+     * The files an event may cite (rule E12).
+     */
+    public const int MAX_FILES_PER_EVENT = 20;
+
+    /**
+     * The format of the schemas for the id of a file the envelope lists (rule E12).
+     */
+    public const string FILE_FORMAT = 'platform-file';
+
+    /**
      * The JSON Schema of an event type version, as fixed by this release of the package.
      */
     public static function schemaPath(string $type, int $version): string

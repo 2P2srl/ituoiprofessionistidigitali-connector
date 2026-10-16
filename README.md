@@ -220,6 +220,32 @@ resolve(EventOutbox::class)->queue($busta);
 - In `coworking.activities_assigned` ogni processo porta il `process.reference` delle sue attività nella transazione (K1): lo studio le raggruppa come il committente.
 - Ricevendoli, leggi il payload con il DTO del tipo: `ContractDetailsData::from($envelope->payload)`.
 
+### File fra sistemi
+
+Un evento fra studi può portare documenti, come gli allegati delle guide di `coworking.activities_assigned`. Il file non viaggia nella busta: sta sul portale per il tempo del transito, e l'evento lo cita con il suo id, nel payload e in `files` della busta (E12, F1–F11).
+
+```php
+use ITuoiProfessionistiDigitali\Connector\Facades\Platform;
+
+$file = Platform::uploadFile(
+    uploadId: (string) Str::uuid7(),          // la chiave di idempotenza (F2): salvala per i nuovi tentativi
+    sender: $mioAderente,
+    recipient: $altroStudio,
+    disk: 's3',
+    path: 'guide/fatture.pdf',
+    name: 'Guida registrazione fatture.pdf',
+    mediaType: 'application/pdf',
+);                                            // FileData, uploaded, da citare entro citable_until (24 ore)
+
+Platform::fileStatus($file->id);              // FileData con lo stato: uploaded, sent, received o expired (FileStatus)
+```
+
+- `uploadFile()` legge il file dal disco del sistema e ne calcola lo SHA-256 senza tenerlo in memoria. Ripete da solo gli errori di rete, i 5xx e un 429 breve, riaprendo il file a ogni tentativo. Un 410 vuol dire un `upload_id` già scaduto: ne serve uno nuovo.
+- `EnvelopeData::make(..., files: [$file->id])` elenca i file della busta. I DTO dei `coworking.*` lo fanno da soli: `toEnvelope()` mette in `files` gli id che il payload cita. Il pacchetto controlla prima dell'invio che siano esattamente quelli del payload, al massimo 20 (E12).
+- Ricevendo, `$envelope->fileReferences()` dà i file della busta consegnata (`FileReferenceData`, con nome, tipo, dimensione, SHA-256 e `available_until`). `Platform::downloadFile($riferimento, $disco, $percorso)` scarica e salva solo se lo SHA-256 è quello della busta, altrimenti `FileIntegrityException`; un file scaduto o già confermato è `FileGoneException`. `Platform::confirmFile($id, $sha256)` conferma, e il portale cancella il file (F8).
+- `reply()` non copia mai i file dell'evento a cui risponde.
+- `PLATFORM_FILE_TIMEOUT` (predefinito 120 secondi) è il tempo massimo di un caricamento.
+
 ## Registro delle transazioni
 
 Ogni incarico inviato si registra sul portale quando nasce, e poi a ogni cambio (regola R9). Ogni PUT è la fotografia completa della transazione, quindi il portale accetta la prima registrazione in qualunque stato, purché coerente con le sue date e con le sue attività. Lo stesso dato copre i due casi:
