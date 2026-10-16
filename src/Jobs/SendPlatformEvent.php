@@ -31,7 +31,7 @@ use ITuoiProfessionistiDigitali\Connector\Support\FileHash;
  * The files of the event are uploaded first, and the envelope leaves with their ids in place of the refs (rule E12).
  * After an attempt that may have reached the platform, a file it let expire is uploaded again with a new upload_id,
  * while a sent one means the event arrived: the same envelope goes again (rule F5). A file changed or gone since the
- * event entered the outbox stops it (rule F3).
+ * event entered the outbox stops it (rule F3), as a file too large does (rule F4).
  *
  * @internal
  */
@@ -66,7 +66,8 @@ final class SendPlatformEvent implements ShouldQueue
         }
         catch (PlatformRequestException $exception)
         {
-            $this->refused($row, $exception, $exception->isContractViolation() || $exception->isConflict());
+            // A file over 25 MB never fits (rule F4): as a contract violation, it is not retried
+            $this->refused($row, $exception, $exception->isContractViolation() || $exception->isConflict() || $exception->status === 413);
 
             return;
         }

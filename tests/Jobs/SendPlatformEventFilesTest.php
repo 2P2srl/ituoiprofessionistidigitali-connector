@@ -186,16 +186,19 @@ it('F3: stops when the file changed or disappeared after the event entered the o
     'deleted' => [fn () => Storage::disk('local')->delete('guide/fatture.pdf')],
 ]);
 
-it('F4: stops at a file the platform refuses', function (): void {
-    platformTakingFiles(['platform.test/api/v1/files' => Http::response(['message' => 'Tipo non ammesso.', 'errors' => ['media_type' => ['Tipo non ammesso.']]], 422)]);
+it('F4: stops at a file the platform refuses, also over 25 MB', function (int $status, array $body, string $error): void {
+    platformTakingFiles(['platform.test/api/v1/files' => Http::response($body, $status)]);
 
     sendEventWithFiles();
 
     expect($this->row->refresh())
         ->status->toBe(OutboxStatus::Failed)
-        ->last_error->toContain('media_type');
+        ->last_error->toContain($error);
     Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/events'));
-});
+})->with([
+    'a type not allowed' => [422, ['message' => 'Tipo non ammesso.', 'errors' => ['media_type' => ['Tipo non ammesso.']]], 'media_type'],
+    'too large' => [413, ['message' => 'File troppo grande.'], 'File troppo grande.'],
+]);
 
 it('T7 and F11: puts the event back in the queue when the quota of the files is full', function (): void {
     platformTakingFiles(['platform.test/api/v1/files' => Http::response(['message' => 'Quota piena.'], 429, ['Retry-After' => '900'])]);
