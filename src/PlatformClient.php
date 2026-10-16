@@ -59,6 +59,7 @@ use ITuoiProfessionistiDigitali\Connector\Exceptions\ProfessionalNotAssignedExce
 use ITuoiProfessionistiDigitali\Connector\Exceptions\TransactionNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\TransactionNotPublishedException;
 use ITuoiProfessionistiDigitali\Connector\Outbox\TransactionOutbox;
+use ITuoiProfessionistiDigitali\Connector\Support\FileHash;
 use ITuoiProfessionistiDigitali\Connector\Validation\PayloadValidator;
 use Throwable;
 
@@ -502,7 +503,7 @@ final readonly class PlatformClient
             'recipient' => $recipient,
             'name' => $name,
             'media_type' => $mediaType,
-            'sha256' => self::sha256(self::readStream($disk, $path)),
+            'sha256' => FileHash::of($disk, $path),
         ];
 
         return FileData::from($this->data($this->upload($fields, $disk, $path, $name)));
@@ -584,37 +585,6 @@ final readonly class PlatformClient
     }
 
     /**
-     * @return resource
-     *
-     * @throws InvalidArgumentException
-     */
-    private static function readStream(string $disk, string $path)
-    {
-        $stream = Storage::disk($disk)->readStream($path);
-
-        if (!is_resource($stream))
-        {
-            throw new InvalidArgumentException("Il file {$path} del disco {$disk} non si legge.");
-        }
-
-        return $stream;
-    }
-
-    /**
-     * The SHA-256 of a stream, read once, in lower case hexadecimal (rule F3).
-     *
-     * @param  resource  $stream
-     */
-    private static function sha256($stream): string
-    {
-        $hash = hash_init('sha256');
-        hash_update_stream($hash, $stream);
-        fclose($stream);
-
-        return hash_final($hash);
-    }
-
-    /**
      * The multipart request of an upload, with the fields before the content (rule F4), and its own retries: the
      * retries of the HTTP client would send again a stream already read. Guzzle closes each stream it releases.
      *
@@ -627,7 +597,7 @@ final readonly class PlatformClient
 
         for ($attempt = 1; ; $attempt++)
         {
-            $stream = self::readStream($disk, $path);
+            $stream = FileHash::open($disk, $path);
             $parts = array_map(static fn (string $field, string $value): array => ['name' => $field, 'contents' => $value], array_keys($fields), $fields);
             $parts[] = ['name' => 'file', 'contents' => $stream, 'filename' => $name];
             $isLast = $attempt > $this->config->retries;

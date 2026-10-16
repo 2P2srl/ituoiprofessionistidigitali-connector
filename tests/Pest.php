@@ -53,7 +53,7 @@ function member(array $overrides = []): array
  *
  * @return list<array<string, mixed>>
  */
-function catalogue(): array
+function catalogue(array $types = [Contract::PING, Contract::PONG]): array
 {
     return array_map(static fn (string $type): array => [
         'name' => $type,
@@ -64,7 +64,7 @@ function catalogue(): array
             'supported' => true,
             'schema' => json_decode((string) file_get_contents(Contract::schemaPath($type, 1)), true),
         ]],
-    ], [Contract::PING, Contract::PONG]);
+    ], $types);
 }
 
 /**

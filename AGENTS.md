@@ -37,6 +37,7 @@ Regole per chi scrive codice che usa `ituoiprofessionistidigitali/connector` in 
 - Salva la busta prima di mandarla. Se l'invio va in timeout, rimanda **la stessa busta**, con lo stesso `event_id`: il portale risponde 200 senza duplicare. Una busta nuova con un `event_id` nuovo è un evento nuovo.
 - Un 409 vuol dire che hai riusato un `event_id` con un contenuto diverso: è un errore nel codice, non qualcosa da ritentare.
 - Manda gli eventi fra studi con `resolve(EventOutbox::class)->queue($busta)`, nella stessa transazione del database del cambio che li produce, non con `Platform::send()` a mano: l'outbox salva la busta, la manda dopo il commit e la ritenta identica. Una riga `failed` di `platform_event_outbox` è un errore nel codice: leggi `last_error`.
+- I file di un evento passano dall'outbox: `OutgoingFileData::make($disco, $percorso, $nome, $tipo)`, cita il suo `ref` nel payload e passa i file a `EventOutbox::queue($busta, $file)`. Non chiamare `Platform::uploadFile()` a mano per un evento in outbox, e non cambiare un file dopo `queue()`: la riga diventa `failed`.
 - Nei test di ogni action che manda un evento verifica la busta con `PlatformOutbox::assertEventQueued($tipo, $callback)`, e con `assertEventNotQueued($tipo)` che non parta.
 
 ## Ricevere eventi

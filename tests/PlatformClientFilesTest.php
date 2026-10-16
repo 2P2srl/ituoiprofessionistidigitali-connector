@@ -112,7 +112,7 @@ it('F3: sends the whole content again at every attempt, reopening the file', fun
 
     expect(uploadGuide()->id)->toBe(FILE_ID);
 
-    $uploads = Http::recorded(fn (Request $request): bool => str_ends_with($request->url(), '/files'));
+    $uploads = Http::recorded(fn (Request $request): bool => str_ends_with($request->url(), '/files'))->values();
     expect($uploads)->toHaveCount(3)
         ->and(str_contains($uploads[2][0]->body(), FILE_CONTENT))->toBeTrue();
 });

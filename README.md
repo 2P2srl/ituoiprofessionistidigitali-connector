@@ -246,6 +246,28 @@ Platform::fileStatus($file->id);              // FileData con lo stato: uploaded
 - `reply()` non copia mai i file dell'evento a cui risponde.
 - `PLATFORM_FILE_TIMEOUT` (predefinito 120 secondi) è il tempo massimo di un caricamento.
 
+Con l'outbox degli eventi non serve caricare a mano. Ogni file del sistema è un `OutgoingFileData` con un `ref` provvisorio: citalo nel payload dove andrebbe l'id del file, e passa i file a `queue()`.
+
+```php
+use ITuoiProfessionistiDigitali\Connector\Data\OutgoingFileData;
+
+$allegato = OutgoingFileData::make('s3', 'guide/fatture.pdf', 'Guida registrazione fatture.pdf', 'application/pdf');
+
+$busta = ActivitiesAssignedData::validateAndCreate([
+    // ...
+    'guides' => [['title' => 'Registrazione fatture', 'body' => $testo, 'attachments' => [$allegato->ref]]],
+])->toEnvelope($mioAderente, $studioScelto, $transazione->typology);
+
+DB::transaction(function () use ($busta, $allegato): void {
+    // il cambio che produce l'evento, poi:
+    resolve(EventOutbox::class)->queue($busta, [$allegato]);
+});
+```
+
+- `queue()` legge lo SHA-256 di ogni file subito, e salva i file in `platform_event_outbox_files` (una tabella nuova: `php artisan migrate`). I file della busta devono essere esattamente i `ref` passati, altrimenti `LogicException`.
+- Il job carica i file e manda l'evento con gli id del portale al posto dei `ref`, nel payload e in `files`. Dopo un tentativo che può essere arrivato chiede lo stato dei file (F5): `sent` vuol dire che l'evento è arrivato, e rimanda la stessa busta; `expired` li ricarica con un `upload_id` nuovo.
+- Un file cambiato o sparito dopo `queue()` porta la riga in `failed`, con il percorso in `last_error`: il file va mandato con un evento nuovo. Anche un file rifiutato dal portale (422, per esempio il tipo) è `failed`. La quota piena (429, F11) rimette l'evento in coda dopo `Retry-After`.
+
 ## Registro delle transazioni
 
 Ogni incarico inviato si registra sul portale quando nasce, e poi a ogni cambio (regola R9). Ogni PUT è la fotografia completa della transazione, quindi il portale accetta la prima registrazione in qualunque stato, purché coerente con le sue date e con le sue attività. Lo stesso dato copre i due casi:
