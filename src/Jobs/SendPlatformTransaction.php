@@ -12,6 +12,7 @@ use ITuoiProfessionistiDigitali\Connector\Data\TransactionData;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
 use ITuoiProfessionistiDigitali\Connector\Jobs\Concerns\SendsOutboxRow;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
+use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Outbox\ProfessionalOutbox;
 use ITuoiProfessionistiDigitali\Connector\PlatformClient;
 
@@ -30,7 +31,7 @@ final class SendPlatformTransaction implements ShouldQueue
 
     public function __construct(public string $reference) {}
 
-    public function handle(PlatformClient $client, ConnectorConfig $config, ProfessionalOutbox $professionals): void
+    public function handle(PlatformClient $client, ConnectorConfig $config, ProfessionalOutbox $professionals, EventOutbox $events): void
     {
         $row = PlatformTransactionOutbox::query()->where('reference', $this->reference)->first();
 
@@ -62,6 +63,8 @@ final class SendPlatformTransaction implements ShouldQueue
         }
 
         $this->confirmed($row, $revision);
+        // The events between firms that follow this write in the register leave now (rule E13)
+        $events->resume($row->transaction_id);
 
         // Only a first registration makes the platform know the person: a declaration of its record may wait for it
         $taxCode = $transaction->counterparty->tax_code;

@@ -1,0 +1,50 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://ituoiprofessionistidigitali.it/contract/event-types/coworking.assignment_offered/1.json",
+    "title": "coworking.assignment_offered v1",
+    "description": "L'offerta di un incarico che il committente manda allo studio di un altro sistema dopo averlo registrato invited. I termini sono quelli del registro, che lo studio legge con GET /transactions.",
+    "type": "object",
+    "properties": {
+        "transaction": {
+            "description": "La transazione dell'affidamento, registrata dal committente.",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/uuid"
+                }
+            },
+            "required": [
+                "id"
+            ],
+            "additionalProperties": false
+        }
+    },
+    "required": [
+        "transaction"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+        "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "datetime": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 191
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+        },
+        "province": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+        }
+    }
+}

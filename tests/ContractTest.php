@@ -52,4 +52,4 @@ it('C4: fixes a schema for every event type of the contract, with its name in th
     expect($schema->{'$schema'})->toBe('https://json-schema.org/draft/2020-12/schema')
         ->and($schema->{'$id'})->toBe("https://ituoiprofessionistidigitali.it/contract/event-types/{$type}/1.json")
         ->and($schema->title)->toBe("{$type} v1");
-})->with([Contract::CONTRACT_DETAILS, Contract::ACTIVITIES_ASSIGNED, Contract::ACTIVITY_STATUS]);
+})->with([Contract::ASSIGNMENT_OFFERED, Contract::ASSIGNMENT_ACCEPTED, Contract::ASSIGNMENT_DECLINED, Contract::ASSIGNMENT_REVOKED, Contract::CONTRACT_DETAILS, Contract::ACTIVITIES_ASSIGNED, Contract::ACTIVITY_STATUS]);

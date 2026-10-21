@@ -11,7 +11,8 @@ use Illuminate\Support\Sleep;
 use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Events\PlatformEventReceived;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\FileIntegrityException;
-use ITuoiProfessionistiDigitali\Connector\Jobs\ReceivePlatformFiles;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\TransactionNotFoundException;
+use ITuoiProfessionistiDigitali\Connector\Jobs\ReceivePlatformEvent;
 use ITuoiProfessionistiDigitali\Connector\PlatformClient;
 
 const RECEIVED_CONTENT = "%PDF-1.7\nGuida ricevuta\n";
@@ -36,7 +37,7 @@ beforeEach(function (): void {
 
 function receive(): void
 {
-    new ReceivePlatformFiles(ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData::from(test()->envelope))->handle(resolve(PlatformClient::class), resolve(ITuoiProfessionistiDigitali\Connector\ConnectorConfig::class), resolve(Illuminate\Contracts\Events\Dispatcher::class));
+    new ReceivePlatformEvent(ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData::from(test()->envelope))->handle(resolve(PlatformClient::class), resolve(ITuoiProfessionistiDigitali\Connector\ConnectorConfig::class), resolve(Illuminate\Contracts\Events\Dispatcher::class));
 }
 
 function platformServing(mixed $download, mixed $receipt = null): void
@@ -102,10 +103,39 @@ it('F8: saves and confirms nothing, and does not hand the event, when the downlo
 });
 
 it('F9: keeps trying until the files are available, one job per event', function (): void {
-    $job = new ReceivePlatformFiles(ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData::from($this->envelope));
+    $job = new ReceivePlatformEvent(ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData::from($this->envelope));
 
     expect($job->uniqueId())->toBe(envelope()['event_id'])
         ->and($job->backoff())->toBe([60, 300, 900, 1800, 3600])
         ->and($job->retryUntil()->toIso8601ZuluString())->toBe('2026-11-15T10:00:00Z')
-        ->and(new ReceivePlatformFiles(ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData::from(envelope(['files' => [[...$this->envelope['files'][0], 'available_until' => null]]])))->retryUntil()->toIso8601ZuluString())->toBe('2026-11-15T10:00:00Z');
+        ->and(new ReceivePlatformEvent(ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData::from(envelope(['files' => [[...$this->envelope['files'][0], 'available_until' => null]]])))->retryUntil()->toIso8601ZuluString())->toBe('2026-11-15T10:00:00Z');
+});
+
+it('E13: hands an offer to the application with the transaction offered, as the register has it', function (): void {
+    platformListingTransactions([recordedTransaction(['reference' => null, 'counterparty' => firm()])]);
+    $this->envelope = assignmentEnvelope(Contract::ASSIGNMENT_OFFERED);
+
+    receive();
+
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://platform.test/api/v1/transactions?id='.recordedTransaction()['id']);
+    Event::assertDispatched(PlatformEventReceived::class, fn (PlatformEventReceived $event): bool => $event->envelope->type === Contract::ASSIGNMENT_OFFERED
+        && $event->files === []
+        && $event->transaction?->id === recordedTransaction()['id']
+        && $event->transaction->counterparty->member_id === firm()['member_id']);
+});
+
+it('E13: retries an offer while the register does not show its transaction yet', function (): void {
+    platformListingTransactions([]);
+    $this->envelope = assignmentEnvelope(Contract::ASSIGNMENT_OFFERED);
+
+    expect(fn () => receive())->toThrow(TransactionNotFoundException::class);
+    Event::assertNotDispatched(PlatformEventReceived::class);
+});
+
+it('hands every other event without a transaction', function (): void {
+    platformServing(Http::response(RECEIVED_CONTENT));
+
+    receive();
+
+    Event::assertDispatched(PlatformEventReceived::class, fn (PlatformEventReceived $event): bool => $event->transaction === null);
 });

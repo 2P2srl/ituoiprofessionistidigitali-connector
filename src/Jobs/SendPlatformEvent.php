@@ -20,6 +20,7 @@ use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
 use ITuoiProfessionistiDigitali\Connector\Jobs\Concerns\SendsOutboxRow;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformEventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformEventOutboxFile;
+use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
 use ITuoiProfessionistiDigitali\Connector\PlatformClient;
 use ITuoiProfessionistiDigitali\Connector\Support\FileHash;
 
@@ -32,6 +33,10 @@ use ITuoiProfessionistiDigitali\Connector\Support\FileHash;
  * After an attempt that may have reached the platform, a file it let expire is uploaded again with a new upload_id,
  * while a sent one means the event arrived: the same envelope goes again (rule F5). A file changed or gone since the
  * event entered the outbox stops it (rule F3), as a file too large does (rule F4).
+ *
+ * An event that cites a transaction of the outbox of the transactions, by its correlation_id, waits for the platform to
+ * confirm the last version of it: the event follows a write in the register, which the platform checks (rule E13).
+ * The confirmation queues it again. If the platform refused the transaction, the event stops too.
  *
  * @internal
  */
@@ -51,12 +56,19 @@ final class SendPlatformEvent implements ShouldQueue
             return;
         }
 
+        $envelope = EnvelopeData::from($row->envelope);
+
+        if ($this->waitsForTransaction($row, $envelope))
+        {
+            return;
+        }
+
         $isRetry = $row->attempts > 0;
         $row->update(['attempts' => $row->attempts + 1]);
 
         try
         {
-            $client->send($this->withFiles($client, EnvelopeData::from($row->envelope), $isRetry));
+            $client->send($this->withFiles($client, $envelope, $isRetry));
         }
         catch (ValidationException $exception)
         {
@@ -79,6 +91,39 @@ final class SendPlatformEvent implements ShouldQueue
         }
 
         $row->update(['status' => OutboxStatus::Sent, 'sent_at' => CarbonImmutable::now(), 'last_error' => null]);
+    }
+
+    /**
+     * Whether the transaction the event cites is still to be confirmed by the platform: the event waits for it, or
+     * stops when the platform refused it.
+     */
+    private function waitsForTransaction(PlatformEventOutbox $row, EnvelopeData $envelope): bool
+    {
+        if ($envelope->correlation_id === null)
+        {
+            return false;
+        }
+
+        $transaction = PlatformTransactionOutbox::query()->where('transaction_id', $envelope->correlation_id)->first();
+
+        if (!$transaction instanceof PlatformTransactionOutbox || $transaction->sent_revision === $transaction->revision)
+        {
+            return false;
+        }
+
+        if ($transaction->status === OutboxStatus::Failed)
+        {
+            $row->update([
+                'status' => OutboxStatus::Failed,
+                'last_error' => __('Il portale ha rifiutato la transazione :id: l\'evento non parte.', ['id' => $transaction->transaction_id]),
+            ]);
+        }
+        else
+        {
+            $row->update(['last_error' => __('In attesa che il portale confermi la transazione :id.', ['id' => $transaction->transaction_id])]);
+        }
+
+        return true;
     }
 
     /**

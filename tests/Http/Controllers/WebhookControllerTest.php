@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Events\PlatformEventReceived;
-use ITuoiProfessionistiDigitali\Connector\Jobs\ReceivePlatformFiles;
+use ITuoiProfessionistiDigitali\Connector\Jobs\ReceivePlatformEvent;
 use ITuoiProfessionistiDigitali\Connector\Signature\WebhookSignature;
 use ITuoiProfessionistiDigitali\Connector\Tests\TestCase;
 
@@ -88,5 +88,22 @@ it('F8: answers 2xx to an event with files and hands it to the application only 
         ->assertNoContent();
 
     Event::assertNotDispatched(PlatformEventReceived::class);
-    Queue::assertPushed(ReceivePlatformFiles::class, fn (ReceivePlatformFiles $job): bool => $job->envelope->event_id === envelope()['event_id'] && $job->uniqueId() === envelope()['event_id']);
+    Queue::assertPushed(ReceivePlatformEvent::class, fn (ReceivePlatformEvent $job): bool => $job->envelope->event_id === envelope()['event_id'] && $job->uniqueId() === envelope()['event_id']);
 });
+
+it('E13: answers 2xx to an offer and hands it to the application from the queue, with its transaction', function (): void {
+    Queue::fake();
+
+    deliver($this, json_encode(assignmentEnvelope(Contract::ASSIGNMENT_OFFERED)))
+        ->assertNoContent();
+
+    Event::assertNotDispatched(PlatformEventReceived::class);
+    Queue::assertPushed(ReceivePlatformEvent::class, fn (ReceivePlatformEvent $job): bool => $job->envelope->type === Contract::ASSIGNMENT_OFFERED);
+});
+
+it('hands the other events between firms to the application at once', function (string $type): void {
+    deliver($this, json_encode(assignmentEnvelope($type)))
+        ->assertNoContent();
+
+    Event::assertDispatched(PlatformEventReceived::class, fn (PlatformEventReceived $event): bool => $event->envelope->type === $type && $event->transaction === null);
+})->with([Contract::ASSIGNMENT_ACCEPTED, Contract::ASSIGNMENT_DECLINED, Contract::ASSIGNMENT_REVOKED]);

@@ -11,6 +11,8 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Storage;
 use ITuoiProfessionistiDigitali\Connector\ConnectorConfig;
+use ITuoiProfessionistiDigitali\Connector\Contract;
+use ITuoiProfessionistiDigitali\Connector\Data\AssignmentOfferedData;
 use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\FileReferenceData;
 use ITuoiProfessionistiDigitali\Connector\Data\ReceivedFileData;
@@ -20,7 +22,10 @@ use ITuoiProfessionistiDigitali\Connector\PlatformClient;
 use ITuoiProfessionistiDigitali\Connector\Support\FileHash;
 
 /**
- * Receives the files of an event delivered to the webhook, out of its ten seconds: downloads each one to
+ * Prepares, out of the ten seconds of the webhook, what an event needs before the application sees it: its files, and
+ * the transaction of an offer.
+ *
+ * Its files: downloads each one to
  * `platform-files/{event_id}/{file_id}` of the disk of the files, checks it on the hash of the envelope, confirms it,
  * and only then hands the event to the application (rule F8). The path uses the ids, never the name of the file.
  *
@@ -28,9 +33,13 @@ use ITuoiProfessionistiDigitali\Connector\Support\FileHash;
  * A file the platform no longer has reaches the application marked as missing (rule F9). The job retries until the
  * files are available, one per event.
  *
+ * The transaction of an offer (coworking.assignment_offered): the terms are those of the register, which the package
+ * reads with GET /transactions?id= and hands to the application with the event. No transaction yet means a register
+ * not aligned: the job retries (rule E13).
+ *
  * @internal
  */
-final class ReceivePlatformFiles implements ShouldBeUnique, ShouldQueue
+final class ReceivePlatformEvent implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
@@ -66,7 +75,11 @@ final class ReceivePlatformFiles implements ShouldBeUnique, ShouldQueue
             $this->envelope->fileReferences(),
         );
 
-        $events->dispatch(new PlatformEventReceived($this->envelope, $files));
+        $transaction = $this->envelope->type === Contract::ASSIGNMENT_OFFERED
+            ? $client->transaction(AssignmentOfferedData::from($this->envelope->payload)->transaction->id)
+            : null;
+
+        $events->dispatch(new PlatformEventReceived($this->envelope, $files, $transaction));
     }
 
     private function receive(PlatformClient $client, string $disk, string $eventId, FileReferenceData $file): ReceivedFileData

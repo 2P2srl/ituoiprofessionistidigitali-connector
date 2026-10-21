@@ -11,9 +11,10 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use ITuoiProfessionistiDigitali\Connector\ConnectorConfig;
+use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Events\PlatformEventReceived;
-use ITuoiProfessionistiDigitali\Connector\Jobs\ReceivePlatformFiles;
+use ITuoiProfessionistiDigitali\Connector\Jobs\ReceivePlatformEvent;
 use TypeError;
 
 /**
@@ -24,8 +25,8 @@ use TypeError;
  * platform, with a type the package does not know: it gets a 2xx and a warning in the log, so the platform does not
  * repeat it for a day (rules W5 and W6), and it never reaches the application. Its payload is never read.
  *
- * An event with files gets its 2xx at once and reaches the application from the queue, after its files are saved
- * and confirmed (rule F8).
+ * An event with files, or an offer, gets its 2xx at once and reaches the application from the queue: after its files
+ * are saved and confirmed (rule F8), with the transaction offered read from the register (rule E13).
  *
  * @internal
  */
@@ -58,13 +59,13 @@ final readonly class WebhookController
             return response()->json(['message' => 'Tipo di evento sconosciuto: ignorato.'], 202);
         }
 
-        if ($envelope->fileReferences() === [])
+        if ($envelope->fileReferences() === [] && $envelope->type !== Contract::ASSIGNMENT_OFFERED)
         {
             $events->dispatch(new PlatformEventReceived($envelope));
         }
         else
         {
-            dispatch(new ReceivePlatformFiles($envelope))->onQueue($config->queue);
+            dispatch(new ReceivePlatformEvent($envelope))->onQueue($config->queue);
         }
 
         return response()->noContent();

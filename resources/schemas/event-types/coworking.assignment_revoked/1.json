@@ -1,0 +1,55 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://ituoiprofessionistidigitali.it/contract/event-types/coworking.assignment_revoked/1.json",
+    "title": "coworking.assignment_revoked v1",
+    "description": "Il committente revoca l'incarico, prima o dopo la risposta dello studio, dopo averlo registrato revoked. revoked_at è il closed_at della transazione.",
+    "type": "object",
+    "properties": {
+        "transaction": {
+            "description": "La transazione dell'affidamento, registrata dal committente.",
+            "type": "object",
+            "properties": {
+                "id": {
+                    "$ref": "#/$defs/uuid"
+                }
+            },
+            "required": [
+                "id"
+            ],
+            "additionalProperties": false
+        },
+        "revoked_at": {
+            "description": "L'istante della revoca, uguale al closed_at della transazione.",
+            "$ref": "#/$defs/datetime"
+        }
+    },
+    "required": [
+        "transaction",
+        "revoked_at"
+    ],
+    "additionalProperties": false,
+    "$defs": {
+        "uuid": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "datetime": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "reference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 191
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+        },
+        "province": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+        }
+    }
+}

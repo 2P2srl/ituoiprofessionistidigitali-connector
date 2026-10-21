@@ -90,4 +90,25 @@ final readonly class EventOutbox
 
         return $row;
     }
+
+    /**
+     * Queues again the events still waiting for the transaction they cite, now that the platform confirmed it: an
+     * event that follows a write in the register leaves after it (rule E13).
+     *
+     * @internal
+     */
+    public function resume(string $transactionId): void
+    {
+        /** @var list<string> $eventIds */
+        $eventIds = PlatformEventOutbox::query()
+            ->where('status', OutboxStatus::Pending)
+            ->where('envelope->correlation_id', $transactionId)
+            ->pluck('event_id')
+            ->all();
+
+        foreach ($eventIds as $eventId)
+        {
+            dispatch(new SendPlatformEvent($eventId))->onQueue($this->config->queue)->afterCommit();
+        }
+    }
 }

@@ -6,6 +6,10 @@ use Illuminate\Validation\ValidationException;
 use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Data\ActivitiesAssignedData;
 use ITuoiProfessionistiDigitali\Connector\Data\ActivityStatusData;
+use ITuoiProfessionistiDigitali\Connector\Data\AssignmentAcceptedData;
+use ITuoiProfessionistiDigitali\Connector\Data\AssignmentDeclinedData;
+use ITuoiProfessionistiDigitali\Connector\Data\AssignmentOfferedData;
+use ITuoiProfessionistiDigitali\Connector\Data\AssignmentRevokedData;
 use ITuoiProfessionistiDigitali\Connector\Data\ContractDetailsData;
 use ITuoiProfessionistiDigitali\Connector\Enums\ActivityStatusChange;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
@@ -71,6 +75,11 @@ it('E13: builds the envelope of an event between firms, correlated to the transa
     'activities assigned without names, deadline and guides' => [Contract::ACTIVITIES_ASSIGNED, ActivitiesAssignedData::class, activitiesAssigned(['name' => null, 'deadline' => null, 'guides' => []])],
     'activity completed' => [Contract::ACTIVITY_STATUS, ActivityStatusData::class, activityStatus()],
     'activity reopened' => [Contract::ACTIVITY_STATUS, ActivityStatusData::class, activityStatus(['status' => 'reopened'])],
+    'assignment offered' => [Contract::ASSIGNMENT_OFFERED, AssignmentOfferedData::class, assignmentEvent(Contract::ASSIGNMENT_OFFERED)],
+    'assignment accepted' => [Contract::ASSIGNMENT_ACCEPTED, AssignmentAcceptedData::class, assignmentEvent(Contract::ASSIGNMENT_ACCEPTED)],
+    'assignment declined' => [Contract::ASSIGNMENT_DECLINED, AssignmentDeclinedData::class, assignmentEvent(Contract::ASSIGNMENT_DECLINED)],
+    'assignment declined without reason' => [Contract::ASSIGNMENT_DECLINED, AssignmentDeclinedData::class, assignmentEvent(Contract::ASSIGNMENT_DECLINED, ['reason' => null])],
+    'assignment revoked' => [Contract::ASSIGNMENT_REVOKED, AssignmentRevokedData::class, assignmentEvent(Contract::ASSIGNMENT_REVOKED)],
 ]);
 
 it('E12: lists in the envelope the files the payload cites, once each', function (): void {
@@ -130,3 +139,24 @@ it('M4: refuses a final client with a wrong tax code', function (): void {
 it('E7: refuses to build an envelope whose payload is outside the schema', function (): void {
     ActivitiesAssignedData::from(activitiesAssigned(['reference' => '']))->toEnvelope(PRINCIPAL_MEMBER, SELECTED_MEMBER, 'commercialisti');
 })->throws(PlatformRequestException::class);
+
+it('R24: reads the answer of the firm with its instant, to register it as responded_at', function (): void {
+    $accepted = AssignmentAcceptedData::from(assignmentEvent(Contract::ASSIGNMENT_ACCEPTED, ['answered_at' => '2026-10-21T11:00:00+02:00']));
+    $declined = AssignmentDeclinedData::from(assignmentEvent(Contract::ASSIGNMENT_DECLINED));
+    $revoked = AssignmentRevokedData::from(assignmentEvent(Contract::ASSIGNMENT_REVOKED));
+
+    expect($accepted->transaction->id)->toBe(COWORKING_TRANSACTION)
+        ->and($accepted->answered_at->toIso8601ZuluString())->toBe('2026-10-21T09:00:00Z')
+        ->and($declined->reason)->toBe('Non abbiamo disponibilità a novembre.')
+        ->and($revoked->revoked_at->toIso8601ZuluString())->toBe('2026-10-22T09:00:00Z');
+});
+
+it('E7: refuses an answer outside its schema', function (string $type, array $payload): void {
+    expect(matchesSchema($type, $payload))->toBeFalse();
+})->with([
+    'offer with more than the id' => [Contract::ASSIGNMENT_OFFERED, assignmentEvent(Contract::ASSIGNMENT_OFFERED, ['title' => 'Contabilità'])],
+    'acceptance without its instant' => [Contract::ASSIGNMENT_ACCEPTED, assignmentEvent(Contract::ASSIGNMENT_OFFERED)],
+    'refusal with an empty reason' => [Contract::ASSIGNMENT_DECLINED, assignmentEvent(Contract::ASSIGNMENT_DECLINED, ['reason' => ''])],
+    'refusal with a reason too long' => [Contract::ASSIGNMENT_DECLINED, assignmentEvent(Contract::ASSIGNMENT_DECLINED, ['reason' => str_repeat('a', 1001)])],
+    'revocation without its instant' => [Contract::ASSIGNMENT_REVOKED, assignmentEvent(Contract::ASSIGNMENT_OFFERED)],
+]);

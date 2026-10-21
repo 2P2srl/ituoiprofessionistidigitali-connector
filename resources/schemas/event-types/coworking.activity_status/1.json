@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://ituoiprofessionistidigitali.it/contract/event-types/coworking.activity_status/1.json",
     "title": "coworking.activity_status v1",
-    "description": "Lo studio scelto dice al committente che un'attività è completata o riaperta, con l'istante. Il committente lo riporta nei suoi PUT della transazione.",
+    "description": "Lo studio a cui è affidato l'incarico dice al committente che un'attività è completata o riaperta, con l'istante. Il committente lo riporta nei suoi PUT della transazione.",
     "type": "object",
     "properties": {
         "transaction": {

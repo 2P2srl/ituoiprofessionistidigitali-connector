@@ -8,12 +8,15 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use ITuoiProfessionistiDigitali\Connector\ConnectorConfig;
+use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalRecordData;
 use ITuoiProfessionistiDigitali\Connector\Enums\OutboxStatus;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
+use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformEvent;
 use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformProfessional;
 use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformTransaction;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
+use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Outbox\ProfessionalOutbox;
 
 uses(RefreshDatabase::class);
@@ -31,6 +34,7 @@ function send(string $reference): void
         resolve(ITuoiProfessionistiDigitali\Connector\PlatformClient::class),
         resolve(ConnectorConfig::class),
         resolve(ProfessionalOutbox::class),
+        resolve(EventOutbox::class),
     );
 }
 
@@ -151,4 +155,16 @@ it('retries ten times with a growing backoff', function (): void {
     $job = new SendPlatformTransaction('x');
 
     expect($job->tries)->toBe(10)->and($job->backoff())->toBe([60, 300, 900, 1800, 3600]);
+});
+
+it('E13: queues again the events waiting for the transaction once the platform confirms it, and only those', function (): void {
+    platformAnsweringTransactions(201, ['data' => recordedTransaction()]);
+    $offer = queuedOffer($this->row);
+    resolve(EventOutbox::class)->queue(EnvelopeData::from(envelope()));
+    Queue::fake();
+
+    send($this->assignment->uuid);
+
+    Queue::assertPushed(SendPlatformEvent::class, 1);
+    Queue::assertPushed(SendPlatformEvent::class, fn (SendPlatformEvent $job): bool => $job->eventId === $offer->event_id);
 });

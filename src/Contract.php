@@ -49,6 +49,26 @@ final class Contract
     public const string PONG = 'platform.pong';
 
     /**
+     * The principal offering to a firm of another system the assignment it registered invited (rule R24).
+     */
+    public const string ASSIGNMENT_OFFERED = 'coworking.assignment_offered';
+
+    /**
+     * The firm accepting the assignment offered, once: the principal then registers it accepted (rule R24).
+     */
+    public const string ASSIGNMENT_ACCEPTED = 'coworking.assignment_accepted';
+
+    /**
+     * The firm declining the assignment offered, once: the principal then registers it declined (rule R24).
+     */
+    public const string ASSIGNMENT_DECLINED = 'coworking.assignment_declined';
+
+    /**
+     * The principal revoking the assignment, after registering it revoked.
+     */
+    public const string ASSIGNMENT_REVOKED = 'coworking.assignment_revoked';
+
+    /**
      * The details for the contracts of the coworking, that each firm sends to the other after the acceptance.
      */
     public const string CONTRACT_DETAILS = 'coworking.contract_details';

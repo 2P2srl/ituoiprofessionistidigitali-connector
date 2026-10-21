@@ -16,6 +16,7 @@ use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformProfessional;
 use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformTransaction;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformProfessionalOutbox;
 use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
+use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Outbox\ProfessionalOutbox;
 use ITuoiProfessionistiDigitali\Connector\PlatformClient;
 
@@ -110,6 +111,7 @@ it('R18: repeats a 404 until the transactions to the person are registered, then
         resolve(PlatformClient::class),
         resolve(ConnectorConfig::class),
         resolve(ProfessionalOutbox::class),
+        resolve(EventOutbox::class),
     );
     Queue::assertPushed(SendPlatformProfessional::class, 2);
 

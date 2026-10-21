@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Str;
+use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Outbox\ProfessionalOutbox;
 use ITuoiProfessionistiDigitali\Connector\Outbox\TransactionOutbox;
 
@@ -66,5 +67,6 @@ it('marks @internal the methods of the outboxes the package calls by itself', fu
     [TransactionOutbox::class, 'prepare'],
     [TransactionOutbox::class, 'confirmed'],
     [ProfessionalOutbox::class, 'resume'],
+    [EventOutbox::class, 'resume'],
     [ProfessionalOutbox::class, 'hasUnregisteredTransactions'],
 ]);

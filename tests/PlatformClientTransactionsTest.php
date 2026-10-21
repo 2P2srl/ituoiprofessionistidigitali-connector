@@ -14,6 +14,7 @@ use ITuoiProfessionistiDigitali\Connector\Enums\TransactionActivityStatus;
 use ITuoiProfessionistiDigitali\Connector\Enums\TransactionResult;
 use ITuoiProfessionistiDigitali\Connector\Enums\TransactionStatus;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\TransactionNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Facades\Platform;
 use ITuoiProfessionistiDigitali\Connector\Outbox\TransactionOutbox;
 use ITuoiProfessionistiDigitali\Connector\PlatformClient;
@@ -188,4 +189,21 @@ it('R11: tells when the last page is read', function (): void {
     withToken(['platform.test/api/v1/transactions*' => Http::response(['data' => [], 'meta' => ['next_cursor' => null]])]);
 
     expect(Platform::transactions()->hasMore())->toBeFalse();
+});
+
+it('R11: reads a transaction by its id, also as its counterparty', function (): void {
+    platformListingTransactions([recordedTransaction(['reference' => null, 'counterparty' => firm()])]);
+
+    $transaction = Platform::transaction(TRANSACTION_ID);
+
+    expect($transaction->id)->toBe(recordedTransaction()['id'])
+        ->and($transaction->counterparty->member_id)->toBe(firm()['member_id']);
+    Http::assertSent(fn (Request $request): bool => $request->url() === 'https://platform.test/api/v1/transactions?id='.TRANSACTION_ID);
+});
+
+it('R11: tells a transaction the system does not see, from the empty list, never a 404', function (): void {
+    platformListingTransactions([]);
+
+    expect(fn () => Platform::transaction(TRANSACTION_ID))
+        ->toThrow(fn (TransactionNotFoundException $exception) => expect($exception->id)->toBe(TRANSACTION_ID));
 });

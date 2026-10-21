@@ -13,6 +13,7 @@ use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Enums\OutboxStatus;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
 use ITuoiProfessionistiDigitali\Connector\Jobs\SendPlatformEvent;
+use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
 use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
 use ITuoiProfessionistiDigitali\Connector\PlatformClient;
 
@@ -24,9 +25,9 @@ beforeEach(function (): void {
     $this->row = resolve(EventOutbox::class)->queue(EnvelopeData::from(envelope()));
 });
 
-function sendEvent(): void
+function sendEvent(?string $eventId = null): void
 {
-    resolve(SendPlatformEvent::class, ['eventId' => envelope()['event_id']])->handle(resolve(PlatformClient::class), resolve(ConnectorConfig::class));
+    resolve(SendPlatformEvent::class, ['eventId' => $eventId ?? envelope()['event_id']])->handle(resolve(PlatformClient::class), resolve(ConnectorConfig::class));
 }
 
 function platformAnsweringEvents(int $status, array $body = []): void
@@ -151,4 +152,48 @@ it('T7: puts a throttled event back in the queue after the seconds of Retry-Afte
     expect($this->row->refresh())
         ->status->toBe(OutboxStatus::Pending)
         ->last_error->toContain('Troppe richieste.');
+});
+
+it('E13: keeps an event waiting, without any request, while the platform has not confirmed the transaction it follows', function (): void {
+    $assignment = sentAssignment();
+    $offer = queuedOffer(PlatformTransactionOutbox::query()->sole());
+
+    sendEvent($offer->event_id);
+
+    expect($offer->refresh())
+        ->status->toBe(OutboxStatus::Pending)
+        ->attempts->toBe(0)
+        ->last_error->toContain($assignment->platformTransactionId());
+    Http::assertNothingSent();
+});
+
+it('E13: stops an event that follows a transaction the platform refused', function (): void {
+    sentAssignment();
+    $transaction = PlatformTransactionOutbox::query()->sole();
+    $transaction->update(['status' => OutboxStatus::Failed]);
+    $offer = queuedOffer($transaction);
+
+    sendEvent($offer->event_id);
+
+    expect($offer->refresh())
+        ->status->toBe(OutboxStatus::Failed)
+        ->attempts->toBe(0)
+        ->last_error->toContain($transaction->transaction_id);
+    Http::assertNothingSent();
+});
+
+it('E13: sends the event once the platform confirmed the transaction', function (): void {
+    sentAssignment();
+    $transaction = PlatformTransactionOutbox::query()->sole();
+    $transaction->update(['sent_revision' => 1, 'status' => OutboxStatus::Sent]);
+    $offer = queuedOffer($transaction);
+    withToken([
+        'platform.test/api/v1/event-types' => Http::response(['data' => catalogue([Contract::ASSIGNMENT_OFFERED])]),
+        'platform.test/api/v1/events' => Http::response(['data' => ['event_id' => $offer->event_id, 'type' => Contract::ASSIGNMENT_OFFERED, 'received_at' => '2026-10-21T08:30:00Z', 'status' => 'queued']], 202),
+    ]);
+
+    sendEvent($offer->event_id);
+
+    expect($offer->refresh()->status)->toBe(OutboxStatus::Sent);
+    Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/events') && $request->data()['correlation_id'] === $transaction->transaction_id);
 });

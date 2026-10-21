@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Http;
 use ITuoiProfessionistiDigitali\Connector\Contract;
+use ITuoiProfessionistiDigitali\Connector\Data\AssignmentOfferedData;
+use ITuoiProfessionistiDigitali\Connector\Models\PlatformEventOutbox;
+use ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox;
+use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
 use ITuoiProfessionistiDigitali\Connector\Tests\TestCase;
 use Opis\JsonSchema\Validator;
 
@@ -164,6 +168,46 @@ function firm(array $overrides = []): array
 }
 
 /**
+ * The payload of an event of the assignment between two systems, on the transaction of recordedTransaction().
+ *
+ * @return array<string, mixed>
+ */
+function assignmentEvent(string $type, array $overrides = []): array
+{
+    return [
+        'transaction' => ['id' => recordedTransaction()['id']],
+        ...match ($type)
+        {
+            Contract::ASSIGNMENT_ACCEPTED => ['answered_at' => '2026-10-21T09:00:00+00:00'],
+            Contract::ASSIGNMENT_DECLINED => ['answered_at' => '2026-10-21T09:00:00+00:00', 'reason' => 'Non abbiamo disponibilità a novembre.'],
+            Contract::ASSIGNMENT_REVOKED => ['revoked_at' => '2026-10-22T09:00:00+00:00'],
+            default => [],
+        },
+        ...$overrides,
+    ];
+}
+
+/**
+ * The envelope of an event of the assignment between two systems, correlated to the transaction of
+ * recordedTransaction().
+ *
+ * @return array<string, mixed>
+ */
+function assignmentEnvelope(string $type): array
+{
+    return envelope(['type' => $type, 'correlation_id' => recordedTransaction()['id'], 'payload' => assignmentEvent($type)]);
+}
+
+/**
+ * The offer of a transaction of the outbox of the transactions, kept in the outbox of the events.
+ */
+function queuedOffer(PlatformTransactionOutbox $transaction): PlatformEventOutbox
+{
+    return resolve(EventOutbox::class)->queue(AssignmentOfferedData::from(['transaction' => ['id' => $transaction->transaction_id]])
+        ->toEnvelope(envelope()['sender'], envelope()['recipient'], 'commercialisti'));
+}
+
+/**
  * A proposal prepared as a draft with one activity, then sent: the outbox has its revision 1.
  */
 function sentAssignment(): ITuoiProfessionistiDigitali\Connector\Tests\Fixtures\Assignment
@@ -181,7 +225,7 @@ function sentAssignment(): ITuoiProfessionistiDigitali\Connector\Tests\Fixtures\
 function confirmedAssignment(): ITuoiProfessionistiDigitali\Connector\Tests\Fixtures\Assignment
 {
     $assignment = sentAssignment();
-    ITuoiProfessionistiDigitali\Connector\Models\PlatformTransactionOutbox::query()->update(['sent_revision' => 1, 'status' => ITuoiProfessionistiDigitali\Connector\Enums\OutboxStatus::Sent]);
+    PlatformTransactionOutbox::query()->update(['sent_revision' => 1, 'status' => ITuoiProfessionistiDigitali\Connector\Enums\OutboxStatus::Sent]);
 
     return $assignment;
 }
@@ -221,6 +265,14 @@ function platformAnsweringProfessionals(int $status, array $body = []): void
     withToken([
         'platform.test/api/v1/professionals/*' => Http::response($status === 204 ? null : $body, $status),
     ]);
+}
+
+/**
+ * The platform answering GET /transactions with these transactions on a single page, after the token.
+ */
+function platformListingTransactions(array $transactions): void
+{
+    withToken(['platform.test/api/v1/transactions*' => Http::response(['data' => $transactions, 'meta' => ['next_cursor' => null]])]);
 }
 
 /**

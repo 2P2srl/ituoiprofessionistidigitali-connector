@@ -38,6 +38,7 @@ use ITuoiProfessionistiDigitali\Connector\Exceptions\FileIntegrityException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformNotConfiguredException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ProfessionalNotAssignedException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\TransactionNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Outbox\TransactionOutbox;
 use ITuoiProfessionistiDigitali\Connector\Support\FileHash;
 use ITuoiProfessionistiDigitali\Connector\Validation\PayloadValidator;
@@ -276,6 +277,19 @@ final readonly class PlatformClient
             transactions: array_map(RecordedTransactionData::from(...), $this->list($response)),
             nextCursor: $this->cursor($response, 'next_cursor'),
         );
+    }
+
+    /**
+     * GET /transactions?id=: a transaction of the register by its id, for its principal or its counterparty (rule R11).
+     * The package calls it by itself when an offer arrives (coworking.assignment_offered).
+     *
+     * @throws TransactionNotFoundException
+     */
+    public function transaction(string $id): RecordedTransactionData
+    {
+        $transaction = $this->list($this->request('GET', 'transactions', ['id' => $id]))[0] ?? null;
+
+        return is_array($transaction) ? RecordedTransactionData::from($transaction) : throw new TransactionNotFoundException($id);
     }
 
     /**
