@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ITuoiProfessionistiDigitali\Connector\Outbox;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use ITuoiProfessionistiDigitali\Connector\ConnectorConfig;
 use ITuoiProfessionistiDigitali\Connector\Contracts\RecordsPlatformTransaction;
 use ITuoiProfessionistiDigitali\Connector\Data\TransactionActivityData;
@@ -62,8 +63,42 @@ final readonly class TransactionOutbox
     }
 
     /**
-     * Transactions the platform registered outside the outbox, from the history in batch: kept as confirmed,
-     * each unless the outbox already has a newer revision (rule R10). One read and one database transaction.
+     * The ids of the transactions of a history about to go in batch, by reference (rule R23): the one the outbox
+     * already has, or a new one kept with the transaction as still to send, without queueing it. If the batch never
+     * answers, platform:send-outbox sends each of them with the same id; one the batch refuses is sent too, and
+     * stops as failed, with the error of the platform.
+     *
+     * @param  list<array{reference: string, revision: int, transaction: TransactionData}>  $transactions
+     * @return array<string, string>
+     *
+     * @internal
+     */
+    public function prepare(array $transactions): array
+    {
+        $rows = $this->rowsOf($transactions);
+
+        return PlatformTransactionOutbox::query()->getConnection()->transaction(function () use ($transactions, $rows): array {
+            $ids = [];
+
+            foreach ($transactions as $item)
+            {
+                $row = $rows->get($item['reference']) ?? PlatformTransactionOutbox::query()->create([
+                    'reference' => $item['reference'],
+                    'payload' => $this->payloadOf($item['transaction']),
+                    'revision' => $item['revision'],
+                    'status' => OutboxStatus::Pending,
+                ]);
+                $rows->put($item['reference'], $row);
+                $ids[$item['reference']] = $row->transaction_id;
+            }
+
+            return $ids;
+        });
+    }
+
+    /**
+     * Transactions the platform registered outside the outbox, from the history in batch, after prepare(): kept as
+     * confirmed, each unless the outbox already has a newer revision (rule R10). One read and one database transaction.
      *
      * @param  list<array{reference: string, revision: int, transaction: TransactionData}>  $transactions
      *
@@ -71,14 +106,14 @@ final readonly class TransactionOutbox
      */
     public function confirmed(array $transactions): void
     {
-        $rows = PlatformTransactionOutbox::query()->whereIn('reference', array_column($transactions, 'reference'))->get()->keyBy('reference');
+        $rows = $this->rowsOf($transactions);
 
         PlatformTransactionOutbox::query()->getConnection()->transaction(function () use ($transactions, $rows): void {
             foreach ($transactions as $item)
             {
-                $row = $rows->get($item['reference']) ?? new PlatformTransactionOutbox(['reference' => $item['reference']]);
+                $row = $rows->get($item['reference']);
 
-                if ($row->exists && $row->revision > $item['revision'])
+                if (!$row instanceof PlatformTransactionOutbox || $row->revision > $item['revision'])
                 {
                     continue;
                 }
@@ -122,6 +157,17 @@ final readonly class TransactionOutbox
     }
 
     /**
+     * The id of the transaction on the platform, fixed at its first save (rule R23): events between firms cite it.
+     * Null for a reference the outbox does not have.
+     */
+    public function transactionId(string $reference): ?string
+    {
+        $id = PlatformTransactionOutbox::query()->where('reference', $reference)->value('transaction_id');
+
+        return is_string($id) ? $id : null;
+    }
+
+    /**
      * Whether the platform confirmed the current revision.
      */
     public function isRecorded(string $reference): bool
@@ -129,6 +175,17 @@ final readonly class TransactionOutbox
         $row = PlatformTransactionOutbox::query()->where('reference', $reference)->first();
 
         return $row instanceof PlatformTransactionOutbox && $row->sent_revision === $row->revision;
+    }
+
+    /**
+     * The rows the outbox already has for these transactions, by reference.
+     *
+     * @param  list<array{reference: string, revision: int, transaction: TransactionData}>  $transactions
+     * @return Collection<array-key, PlatformTransactionOutbox>
+     */
+    private function rowsOf(array $transactions): Collection
+    {
+        return PlatformTransactionOutbox::query()->whereIn('reference', array_column($transactions, 'reference'))->get()->keyBy('reference');
     }
 
     /**

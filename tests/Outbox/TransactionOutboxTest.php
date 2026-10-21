@@ -5,7 +5,9 @@ declare(strict_types=1);
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -82,6 +84,36 @@ it('R9: records the transaction again when an activity changes or goes, without 
     expect($row->refresh()->revision)->toBe(4)->and($row->payload['activities'])->toBe([]);
 });
 
+it('R23: gives the transaction its id at the first save, a UUID v7 in lower case, the same at every revision', function (): void {
+    $draft = Assignment::query()->create(['status' => 'invited']);
+
+    expect($draft->platformTransactionId())->toBeNull();
+
+    $assignment = sentAssignment();
+    $id = $assignment->platformTransactionId();
+
+    expect($id)->toMatch('/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/')
+        ->and(PlatformTransactionOutbox::query()->sole()->transaction_id)->toBe($id);
+
+    $assignment->update(['status' => 'accepted']);
+
+    expect(PlatformTransactionOutbox::query()->sole())->revision->toBe(2)->transaction_id->toBe($id)
+        ->and(resolve(TransactionOutbox::class)->transactionId($assignment->uuid))->toBe($id)
+        ->and(resolve(TransactionOutbox::class)->transactionId('unknown'))->toBeNull()
+        ->and(new Assignment(['uuid' => (string) Str::uuid7()])->platformTransactionId())->toBeNull();
+});
+
+it('R23: has the id inside the database transaction of the save, before the platform confirms anything', function (): void {
+    $id = DB::transaction(static function (): ?string {
+        $assignment = Assignment::query()->create(['status' => 'invited']);
+        $assignment->update(['uuid' => (string) Str::uuid7()]);
+
+        return $assignment->platformTransactionId();
+    });
+
+    expect($id)->toBe(PlatformTransactionOutbox::query()->sole()->transaction_id);
+});
+
 it('R9: tells whether the platform confirmed the current version', function (): void {
     $assignment = sentAssignment();
 
@@ -125,7 +157,7 @@ it('R10 and R18: keeps the history registered in batch as confirmed, so the outb
             ['created', 'updated', 'unchanged', 'stale', 'invalid', 'updated'],
         )]),
     ]);
-    PlatformTransactionOutbox::query()->create(['reference' => 'kept', 'revision' => 5, 'payload' => [], 'status' => OutboxStatus::Pending]);
+    $kept = PlatformTransactionOutbox::query()->create(['reference' => 'kept', 'revision' => 5, 'payload' => [], 'status' => OutboxStatus::Pending]);
     $transaction = TransactionData::from(transaction());
 
     Platform::recordTransactions(array_map(
@@ -135,16 +167,18 @@ it('R10 and R18: keeps the history registered in batch as confirmed, so the outb
 
     $rows = PlatformTransactionOutbox::query()->orderBy('reference')->get()->keyBy('reference');
 
-    expect($rows->keys()->all())->toBe(['created', 'kept', 'unchanged', 'updated'])
+    expect($rows->keys()->all())->toBe(['created', 'invalid', 'kept', 'stale', 'unchanged', 'updated'])
         ->and($rows['created'])
         ->revision->toBe(2)
         ->sent_revision->toBe(2)
         ->status->toBe(OutboxStatus::Sent)
         ->sent_at->not->toBeNull()
         ->payload->toBe(resolve(TransactionOutbox::class)->payloadOf($transaction))
-        ->and($rows['kept'])->revision->toBe(5)->status->toBe(OutboxStatus::Pending)
+        ->and($rows->only(['invalid', 'stale']))->each(fn ($row) => $row->revision->toBe(2)->sent_revision->toBeNull()->status->toBe(OutboxStatus::Pending))
+        ->and($rows['kept'])->revision->toBe(5)->status->toBe(OutboxStatus::Pending)->transaction_id->toBe($kept->transaction_id)
         ->and(resolve(ProfessionalOutbox::class)->declare('RSSMRA80A01H501U', ProfessionalRecordData::from(professional(['declared_at' => '2026-10-06T18:00:00+02:00']))))->not->toBeNull();
     Queue::assertNotPushed(SendPlatformTransaction::class);
+    Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/transactions/batch') && collect($request->data()['transactions'])->pluck('id', 'reference')->sortKeys()->all() === $rows->map->transaction_id->all());
 });
 
 /**

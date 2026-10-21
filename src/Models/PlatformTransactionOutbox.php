@@ -6,6 +6,7 @@ namespace ITuoiProfessionistiDigitali\Connector\Models;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use ITuoiProfessionistiDigitali\Connector\Enums\OutboxStatus;
 use ITuoiProfessionistiDigitali\Connector\Models\Concerns\HasOutboxColumns;
@@ -15,6 +16,7 @@ use ITuoiProfessionistiDigitali\Connector\Models\Concerns\HasOutboxColumns;
  *
  * @property int $id
  * @property string $reference
+ * @property string $transaction_id The id of the transaction on the platform, chosen at the first registration (rule R23).
  * @property int $revision
  * @property int|null $sent_revision
  * @property array<string, mixed> $payload
@@ -28,10 +30,22 @@ use ITuoiProfessionistiDigitali\Connector\Models\Concerns\HasOutboxColumns;
 final class PlatformTransactionOutbox extends Model
 {
     use HasOutboxColumns;
+    use HasUuids;
 
     protected $table = 'platform_transaction_outbox';
 
     protected $guarded = ['id'];
+
+    /**
+     * The id of the transaction, given at the first save and kept at every revision: a UUID v7 in lower case
+     * (rules T3 and R23). The primary key stays the incrementing id.
+     *
+     * @return list<string>
+     */
+    public function uniqueIds(): array
+    {
+        return ['transaction_id'];
+    }
 
     /**
      * The rows sent to the person with this tax code: the outbox keeps the counterparty of every sending (rule R18).

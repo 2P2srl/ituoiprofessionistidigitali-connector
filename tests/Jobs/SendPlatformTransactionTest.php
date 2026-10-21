@@ -53,7 +53,7 @@ it('R7: sends the last version with its revision and marks it confirmed', functi
         ->last_error->toBeNull()
         ->sent_at->not->toBeNull()
         ->and($this->assignment->isRecordedOnPlatform())->toBeTrue();
-    Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT' && $request->data()['revision'] === 1);
+    Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT' && $request->data()['revision'] === 1 && $request->data()['id'] === $this->row->transaction_id);
 });
 
 it('R18: queues again the declaration of the person waiting for the confirmation', function (): void {

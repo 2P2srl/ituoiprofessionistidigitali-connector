@@ -27,6 +27,18 @@ trait RecordsOnPlatform
     }
 
     /**
+     * The id of the transaction on the platform, fixed at its first save and the same at every revision (rule R23):
+     * the events between firms cite it. It exists as soon as the model is saved, inside the same database
+     * transaction, before the platform confirms anything. Null for a draft.
+     */
+    public function platformTransactionId(): ?string
+    {
+        $reference = $this->platformTransactionReference();
+
+        return $reference === null ? null : resolve(TransactionOutbox::class)->transactionId($reference);
+    }
+
+    /**
      * Whether the platform confirmed the current version of the transaction. The work does not wait for it.
      */
     public function isRecordedOnPlatform(): bool

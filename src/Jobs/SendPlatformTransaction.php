@@ -46,7 +46,7 @@ final class SendPlatformTransaction implements ShouldQueue
 
         try
         {
-            $client->recordTransaction($this->reference, $transaction, $revision);
+            $client->recordTransaction($this->reference, $row->transaction_id, $transaction, $revision);
         }
         catch (ValidationException $exception)
         {

@@ -12,6 +12,7 @@ return new class extends Migration {
         Schema::create('platform_transaction_outbox', function (Blueprint $table): void {
             $table->id();
             $table->string('reference', 191)->unique();
+            $table->uuid('transaction_id')->unique();
             $table->unsignedInteger('revision');
             $table->unsignedInteger('sent_revision')->nullable();
             $table->json('payload');

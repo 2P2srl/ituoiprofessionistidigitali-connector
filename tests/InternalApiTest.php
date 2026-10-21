@@ -63,6 +63,7 @@ it('marks @internal the methods of the outboxes the package calls by itself', fu
     expect((string) (new ReflectionMethod($class, $method))->getDocComment())->toContain('@internal');
 })->with([
     [TransactionOutbox::class, 'record'],
+    [TransactionOutbox::class, 'prepare'],
     [TransactionOutbox::class, 'confirmed'],
     [ProfessionalOutbox::class, 'resume'],
     [ProfessionalOutbox::class, 'hasUnregisteredTransactions'],

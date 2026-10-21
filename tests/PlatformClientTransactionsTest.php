@@ -15,9 +15,12 @@ use ITuoiProfessionistiDigitali\Connector\Enums\TransactionResult;
 use ITuoiProfessionistiDigitali\Connector\Enums\TransactionStatus;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
 use ITuoiProfessionistiDigitali\Connector\Facades\Platform;
+use ITuoiProfessionistiDigitali\Connector\Outbox\TransactionOutbox;
 use ITuoiProfessionistiDigitali\Connector\PlatformClient;
 
 uses(RefreshDatabase::class);
+
+const TRANSACTION_ID = '0199b6f5-0000-7000-8000-000000000001';
 
 beforeEach(function (): void {
     Http::preventStrayRequests();
@@ -26,7 +29,7 @@ beforeEach(function (): void {
 it('R7: registers a transaction with its revision under its reference', function (): void {
     withToken(['platform.test/api/v1/transactions/*' => Http::response(['data' => recordedTransaction()], 201)]);
 
-    $recorded = Platform::recordTransaction('invio 1/a', TransactionData::from(transaction()), 2);
+    $recorded = Platform::recordTransaction('invio 1/a', TRANSACTION_ID, TransactionData::from(transaction()), 2);
 
     expect($recorded->status)->toBe(TransactionStatus::Invited)
         ->and($recorded->id)->toBe(recordedTransaction()['id'])
@@ -38,16 +41,24 @@ it('R7: registers a transaction with its revision under its reference', function
         ->and($recorded->activities[0]->status)->toBe(TransactionActivityStatus::Open);
     Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT'
         && $request->url() === 'https://platform.test/api/v1/transactions/invio%201%2Fa'
+        && $request->data()['id'] === TRANSACTION_ID
         && $request->data()['revision'] === 2
         && $request->data()['principal'] === transaction()['principal']
         && $request->data()['activities'][0]['reference'] === 'riga-1');
 });
 
+it('R23 and T3: does not send an id that is not a UUID in lower case', function (string $id): void {
+    Http::fake();
+
+    expect(fn () => Platform::recordTransaction('invio-1', $id, TransactionData::from(transaction()), 1))->toThrow(ValidationException::class);
+    Http::assertNothingSent();
+})->with(['not a uuid' => ['invio-1'], 'upper case' => ['0199B6F5-0000-7000-8000-000000000001']]);
+
 it('T6: sends the email of a person counterparty in lower case', function (): void {
     withToken(['platform.test/api/v1/transactions/*' => Http::response(['data' => recordedTransaction()], 201)]);
     $counterparty = [...transaction()['counterparty'], 'email' => 'Mario.Rossi@Example.com'];
 
-    Platform::recordTransaction('invio-1', TransactionData::from(transaction(['counterparty' => $counterparty])), 1);
+    Platform::recordTransaction('invio-1', TRANSACTION_ID, TransactionData::from(transaction(['counterparty' => $counterparty])), 1);
 
     Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT' && $request->data()['counterparty'] === transaction()['counterparty']);
 });
@@ -55,7 +66,7 @@ it('T6: sends the email of a person counterparty in lower case', function (): vo
 it('R6: checks every description against the schema fixed in the package before sending', function (): void {
     withToken(['platform.test/api/v1/transactions/*' => Http::response(['data' => recordedTransaction()], 201)]);
 
-    Platform::recordTransaction('invio-1', TransactionData::from(transaction(['activities' => [
+    Platform::recordTransaction('invio-1', TRANSACTION_ID, TransactionData::from(transaction(['activities' => [
         activity(['description' => ['process' => ['reference' => 'agenda-7', 'name' => null], 'activity' => null, 'deadline' => null]]),
     ]])), 1);
 
@@ -66,7 +77,7 @@ it('R6: checks every description against the schema fixed in the package before 
 it('R5 and R14: does not send what the rules of the register refuse', function (): void {
     Http::fake();
 
-    expect(fn () => Platform::recordTransaction('invio-1', TransactionData::from(transaction(['activities' => [activity(['minutes_worked' => 30])]])), 1))
+    expect(fn () => Platform::recordTransaction('invio-1', TRANSACTION_ID, TransactionData::from(transaction(['activities' => [activity(['minutes_worked' => 30])]])), 1))
         ->toThrow(ValidationException::class);
     Http::assertNothingSent();
 });
@@ -77,7 +88,7 @@ it('R6: leaves the payload to the platform when the local validation is off or t
     Platform::clearResolvedInstances();
     withToken(['platform.test/api/v1/transactions/*' => Http::response(['data' => recordedTransaction()], 201)]);
 
-    Platform::recordTransaction('invio-1', TransactionData::from(transaction($overrides)), 1);
+    Platform::recordTransaction('invio-1', TRANSACTION_ID, TransactionData::from(transaction($overrides)), 1);
 
     Http::assertSentCount(2);
 })->with([
@@ -90,7 +101,7 @@ it('R7: reads the transaction already registered from a conflict', function (): 
 
     try
     {
-        Platform::recordTransaction('invio-1', TransactionData::from(transaction()), 1);
+        Platform::recordTransaction('invio-1', TRANSACTION_ID, TransactionData::from(transaction()), 1);
         $this->fail('The platform should answer 409.');
     }
     catch (PlatformRequestException $exception)
@@ -118,6 +129,7 @@ it('R10: loads the history and reads each outcome', function (): void {
         ->and($outcomes[1]->errors)->toBe(['principal' => ['Non è un aderente.']]);
     Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/transactions/batch')
         && $request->data()['transactions'][1]['reference'] === 'b'
+        && $request->data()['transactions'][1]['id'] === resolve(TransactionOutbox::class)->transactionId('b')
         && $request->data()['transactions'][1]['revision'] === 1);
 });
 
