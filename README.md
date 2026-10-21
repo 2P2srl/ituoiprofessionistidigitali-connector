@@ -68,7 +68,6 @@ $members = Platform::syncMembers([
         'province' => 'BA',
         'typologies' => ['commercialisti'],
         'listed' => true,
-        'email' => 'segreteria@studiorossi.example',
     ]),
 ]);
 
@@ -77,32 +76,7 @@ $members[0]->id;   // l'id del portale: il sender dei tuoi eventi
 
 L'elenco è **completo**: gli aderenti che mancano diventano inattivi.
 
-`email` è obbligatoria: è l'email coworking della struttura, l'indirizzo per le notifiche della sua area sul portale (M14). È unica fra gli aderenti di tutto il portale, di qualunque sistema (M15): una duplicata è un 422 su `members.N.email`. Il pacchetto controlla solo che due aderenti della stessa richiesta non abbiano la stessa email, perché non conosce quelli degli altri sistemi. Le email non distinguono maiuscole e minuscole (T6): `MemberData` porta l'email in minuscolo, come il portale la salva e la restituisce, e due email della stessa richiesta che differiscono solo per le maiuscole sono la stessa. Sul portale è anche l'email con cui lo studio entra nella sua area; nelle chiamate del pacchetto, invece, un aderente si riconosce da `external_ref` o dal suo `id`, mai dall'email. La risposta di `syncMembers()` la riporta per ogni aderente. `searchMembers()` invece non la mostra mai, come il codice fiscale (M11).
-
-I rifiuti di `syncMembers()` per l'email hanno un'eccezione propria (M15):
-
-```php
-use ITuoiProfessionistiDigitali\Connector\Exceptions\ConcurrentMemberSyncException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberEmailsRejectedException;
-
-try
-{
-    $members = Platform::syncMembers($all);
-}
-catch (ConcurrentMemberSyncException)
-{
-    // 422 su `members`: un'altra richiesta ha usato la stessa email nello stesso momento.
-    // Il portale non ha applicato nulla (M6): rimanda lo stesso elenco.
-}
-catch (MemberEmailsRejectedException $exception)
-{
-    // 422 solo su `members.N.email`: per external_ref, i messaggi del portale.
-    // Non si ritenta: l'email va risolta con lo studio.
-    $exception->messages; // ['struttura-1' => ['…'], …]
-}
-```
-
-Un 422 con altri errori, anche insieme alle email, resta una `PlatformRequestException`; nelle due eccezioni quella del portale è in `getPrevious()`.
+Due `syncMembers()` contemporanei dello stesso sistema non si mescolano: il portale li applica uno dopo l'altro e vince l'ultimo (M6). Un rifiuto è una `PlatformRequestException` con le chiavi dei campi in `->errors`, da correggere e non da ritentare.
 
 ```php
 $page = Platform::searchMembers(typology: 'commercialisti', search: 'bianchi');
@@ -112,28 +86,15 @@ foreach ($page->members as $member) { /* id, name, vat_number, municipality, pro
 $next = Platform::searchMembers(typology: 'commercialisti', cursor: $page->nextCursor);
 ```
 
-### Accesso all'area dello studio
-
-Il sistema porta i suoi utenti nell'area riservata di un suo aderente sul portale con un link firmato (regole U1–U4). L'accesso è per studio e non per persona: la richiesta non ha corpo, e chi ha cliccato lo registra il sistema.
+`searchMembers()` non mostra mai il codice fiscale, `external_ref` né il sistema (M11, M12). Un aderente di un altro sistema si legge anche per id, per esempio il committente di un'offerta ricevuta (M16):
 
 ```php
-use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberNotAccessibleException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberNotFoundException;
 
-try
-{
-    $link = Platform::memberAccessLink($aderente->platform_id);
-}
-catch (MemberNotAccessibleException)
-{
-    abort(404);
-}
-
-return redirect()->away($link->url);
+$committente = Platform::member($envelope->sender);   // ListedMemberData
 ```
 
-- Il link vale **una volta sola** e scade dopo 5 minuti (`$link->expires_at`). Ogni chiamata ne crea uno nuovo.
-- Il link è un **segreto** (U4): usalo subito con un redirect del browser, senza conservarlo, metterlo in cache o scriverlo in un log. Se un log ha bisogno di un riferimento, usa solo `expires_at`. Il pacchetto non lo mette in cache e non lo scrive nei log. Se il sistema registra le risposte del client HTTP, per esempio con Telescope o con un listener di `ResponseReceived`, deve escludere questa rotta.
-- Un aderente di un altro sistema, inesistente o inattivo dà `MemberNotAccessibleException`: il portale non dice quale dei tre. Un aderente con `listed: false` ha il suo link come gli altri. Un sistema non attivo riceve 403, oltre 30 richieste al minuto 429, entrambi come `PlatformRequestException`.
+Risponde per un aderente pubblicato di un altro sistema attivo, o legato al sistema da una transazione; ogni altro caso, compreso un aderente del sistema stesso, è `MemberNotFoundException`, senza dire perché.
 
 ## Eventi
 
@@ -187,38 +148,53 @@ final class HandlePlatformEvent implements ShouldQueue
 }
 ```
 
-Gli eventi che genera il portale, quelli delle candidature e della scelta (`transaction.*`), arrivano allo stesso modo, con `sender` a `null` (regola L6): `$envelope->isFromPlatform()` li riconosce. Nel catalogo hanno `sent_by: platform` (`EventTypeData::$sent_by`), e `Platform::send()` li rifiuta prima di mandarli (E5). Una busta senza mittente di un tipo, o di una versione, che il pacchetto non conosce viene da un portale più recente: il webhook risponde 202, la scrive nel log come `warning` (id, tipo e versione, mai il payload) e non la passa all'applicazione. Così il portale non la ripete per un giorno (W5, W6). Quando compare quel `warning`, aggiorna il pacchetto. Una busta che non si legge, o un evento del portale con il payload rotto, ha ancora 400.
+Il portale non genera eventi di business: da sé manda solo il `platform.ping` della verifica, a cui risponde il pacchetto. Il catalogo tiene `sent_by` (`EventTypeData::$sent_by`) per i tipi che il portale potrà mandare in futuro, e `Platform::send()` rifiuta un tipo con `sent_by: platform` prima di mandarlo (E5). Ogni altra busta senza mittente viene da un portale più recente: il webhook risponde 202, la scrive nel log come `warning` (id, tipo e versione, mai il payload) e non la passa all'applicazione. Così il portale non la ripete per un giorno (W5, W6). Quando compare quel `warning`, aggiorna il pacchetto. Una busta che non si legge ha ancora 400.
 
 ### Eventi fra studi
 
-Scelto uno studio, il portale manda `transaction.assignment_received` al sistema dello studio (`AssignmentReceivedData`): la transazione accettata, con l'aderente come controparte, e il committente (`PrincipalData`), che si fa conoscere solo adesso. La transazione è del committente: il sistema dello studio non la registra.
+Un incarico affidato a uno studio di un **altro** sistema si porta avanti con eventi fra i due sistemi; il portale li controlla sul registro e li inoltra, ma non decide nulla (E13). Con A il sistema del committente e B quello dello studio:
 
-Da lì i due studi si parlano con tre tipi del catalogo, sempre con `correlation_id` uguale all'id della transazione e la sua tipologia (E13):
+1. A registra la transazione `invited`, con lo studio come controparte (`CounterpartyData::member($idAderente)`), e nella stessa transazione del database accoda `coworking.assignment_offered`.
+2. B riceve l'offerta con la transazione letta dal registro (`$event->transaction`), decide nel suo sistema e risponde una volta sola con `coworking.assignment_accepted` o `coworking.assignment_declined`, con l'istante della risposta.
+3. A, nel listener della risposta, registra la transazione `accepted` o `declined` con `responded_at` uguale ad `answered_at`. Il portale rifiuta questo passaggio prima della risposta di B (R24).
+4. Ognuno manda all'altro `coworking.contract_details`; i due studi firmano fuori dal portale e A registra `signed_at`.
+5. A manda `coworking.activities_assigned`; B manda `coworking.activity_status`, che A riporta nei suoi `PUT`.
+
+A può revocare finché l'incarico non è concluso, prima o dopo la risposta: registra `revoked`, con `closed_at`, e accoda `coworking.assignment_revoked` con `revoked_at` uguale a `closed_at`. Una risposta di B arrivata dopo la revoca registrata riceve 422: l'offerta non c'è più.
 
 | Tipo | Payload | Chi lo manda |
 | --- | --- | --- |
-| `coworking.contract_details` | `ContractDetailsData`: lo studio (`PartyData`, con la sede in `AddressData`) e chi firma (`SignatoryData`) | Tutti e due, subito dopo la scelta |
-| `coworking.activities_assigned` | `ActivitiesAssignedData`: i processi (`AssignedProcessData`) col cliente finale (`FinalClientData`), le attività (`AssignedActivityData`) e le guide (`GuideData`) | Il committente, dopo la firma dei documenti del coworking |
-| `coworking.activity_status` | `ActivityStatusData`: un'attività `completed` o `reopened` (`ActivityStatusChange`), con l'istante | Lo studio scelto |
+| `coworking.assignment_offered` | `AssignmentOfferedData`: la transazione (`TransactionIdData`) | Il committente, con il registro `invited` |
+| `coworking.assignment_accepted` | `AssignmentAcceptedData`: la transazione e `answered_at` | Lo studio, una volta, con il registro `invited` |
+| `coworking.assignment_declined` | `AssignmentDeclinedData`: la transazione, `answered_at` e `reason` (fino a 1000 caratteri, o `null`) | Lo studio, una volta, con il registro `invited` |
+| `coworking.assignment_revoked` | `AssignmentRevokedData`: la transazione e `revoked_at` | Il committente, con il registro già `revoked` |
+| `coworking.contract_details` | `ContractDetailsData`: lo studio (`PartyData`, con la sede in `AddressData`) e chi firma (`SignatoryData`) | Tutti e due, dopo l'accettazione |
+| `coworking.activities_assigned` | `ActivitiesAssignedData`: i processi (`AssignedProcessData`) col cliente finale (`FinalClientData`), le attività (`AssignedActivityData`) e le guide (`GuideData`) | Il committente, dopo la firma |
+| `coworking.activity_status` | `ActivityStatusData`: un'attività `completed` o `reopened` (`ActivityStatusChange`), con l'istante | Lo studio |
+
+Ogni evento ha `correlation_id` uguale all'id della transazione e la sua tipologia. L'id lo dà il pacchetto alla transazione dal primo salvataggio: `$model->platformTransactionId()` (R23).
 
 ```php
-use ITuoiProfessionistiDigitali\Connector\Data\ActivityStatusData;
+use ITuoiProfessionistiDigitali\Connector\Data\AssignmentOfferedData;
 use ITuoiProfessionistiDigitali\Connector\Outbox\EventOutbox;
 
-$busta = ActivityStatusData::validateAndCreate([
-    'transaction' => ['id' => $transazione->id],
-    'activity' => $riga->reference,
-    'status' => 'completed',
-    'occurred_at' => now()->format(Contract::DATE_FORMAT),
-])->toEnvelope(sender: $mioAderente, recipient: $committente->id, typology: $transazione->typology);
+DB::transaction(function () use ($proposta): void {
+    $proposta->save();   // RecordsOnPlatform: la transazione invited entra nella outbox, con il suo id
 
-resolve(EventOutbox::class)->queue($busta);
+    $offerta = AssignmentOfferedData::from(['transaction' => ['id' => $proposta->platformTransactionId()]])
+        ->toEnvelope(sender: $mioAderente, recipient: $studio->platform_id, typology: $proposta->typology);
+
+    resolve(EventOutbox::class)->queue($offerta);
+});
 ```
 
+- **Ordine.** Un evento che cita una transazione della outbox delle transazioni parte solo dopo che il portale ne ha confermato l'ultima versione salvata: aspetta in `pending`, con il motivo in `last_error`, e la conferma lo rimette in coda. Se il portale ha rifiutato la transazione, anche l'evento finisce `failed`. Salva il modello prima di accodare l'evento, nella stessa transazione del database.
+- **Ricezione di un'offerta.** Il webhook risponde subito; un job in coda (`ReceivePlatformEvent`) legge la transazione con `Platform::transaction($id)` e lancia `PlatformEventReceived` con `$event->transaction` (`RecordedTransactionData`): i termini, i prezzi e la controparte come il registro li ha. Se il registro non la mostra ancora, il job ritenta.
+- **La transazione è del committente**: il sistema dello studio non la registra e non scrive nel registro; la sua risposta la registra il committente.
 - `toEnvelope()` controlla il payload sullo schema del pacchetto prima di costruire la busta: fuori schema è una `PlatformRequestException` 422, come la darebbe il portale.
 - `validateAndCreate()` controlla anche il carattere di controllo di partita IVA e codici fiscali (M4) e il cellulare in E.164.
 - In `coworking.activities_assigned` ogni processo porta il `process.reference` delle sue attività nella transazione (K1): lo studio le raggruppa come il committente.
-- Ricevendoli, leggi il payload con il DTO del tipo: `ContractDetailsData::from($envelope->payload)`.
+- Ricevendoli, leggi il payload con il DTO del tipo: `AssignmentAcceptedData::from($envelope->payload)`.
 
 ### File fra sistemi
 
@@ -266,30 +242,32 @@ DB::transaction(function () use ($busta, $allegato): void {
 
 - `queue()` legge lo SHA-256 di ogni file subito, e salva i file in `platform_event_outbox_files` (una tabella nuova: `php artisan migrate`). I file della busta devono essere esattamente i `ref` passati, altrimenti `LogicException`.
 - Il job carica i file e manda l'evento con gli id del portale al posto dei `ref`, nel payload e in `files`. Dopo un tentativo che può essere arrivato chiede lo stato dei file (F5): `sent` vuol dire che l'evento è arrivato, e rimanda la stessa busta; `expired` li ricarica con un `upload_id` nuovo.
-- Ricevendo, il pacchetto fa tutto da solo. Un evento con file ha subito il suo 2xx dal webhook, e un job in coda (`ReceivePlatformFiles`, uno per `event_id`) scarica ogni file in `platform-files/{event_id}/{file_id}` sul disco `PLATFORM_FILES_DISK`, lo verifica sullo SHA-256 della busta e lo conferma. Solo dopo lancia `PlatformEventReceived`, con `$event->files`: un `ReceivedFileData` per file, con `disk`, `path`, nome, tipo e SHA-256. Il listener sposta i file nello storage del sistema. Un file che il portale non ha più arriva con `isMissing()` e `path` a `null`: chiedilo di nuovo allo studio che lo ha mandato.
+- Ricevendo, il pacchetto fa tutto da solo. Un evento con file ha subito il suo 2xx dal webhook, e un job in coda (`ReceivePlatformEvent`, uno per `event_id`) scarica ogni file in `platform-files/{event_id}/{file_id}` sul disco `PLATFORM_FILES_DISK`, lo verifica sullo SHA-256 della busta e lo conferma. Solo dopo lancia `PlatformEventReceived`, con `$event->files`: un `ReceivedFileData` per file, con `disk`, `path`, nome, tipo e SHA-256. Il listener sposta i file nello storage del sistema. Un file che il portale non ha più arriva con `isMissing()` e `path` a `null`: chiedilo di nuovo allo studio che lo ha mandato.
 - Un file cambiato o sparito dopo `queue()` porta la riga in `failed`, con il percorso in `last_error`: il file va mandato con un evento nuovo. Anche un file rifiutato dal portale (422, per esempio il tipo, o 413 oltre i 25 MB) è `failed`. La quota piena (429, F11) rimette l'evento in coda dopo `Retry-After`.
 
 ## Registro delle transazioni
 
 Ogni incarico inviato si registra sul portale quando nasce, e poi a ogni cambio (regola R9). Ogni PUT è la fotografia completa della transazione, quindi il portale accetta la prima registrazione in qualunque stato, purché coerente con le sue date e con le sue attività. Lo stesso dato copre i due casi:
 
-- incarico **affidato** a una controparte che il sistema conosce già: `counterparty` presente, `audience` uguale al suo tipo (`person` o `member`), `expires_at` a `null`, stati `invited`, `accepted`, `declined`, `revoked`, `completed`;
-- incarico **pubblicato** sul portale: `counterparty` a `null`, stati `published` e `withdrawn`, con `expires_at` e `audience` (`person`, `member` o `any`).
+- la controparte c'è sempre, scelta dal sistema: una persona (un collaboratore, o un consulente trovato con `Platform::searchProfessionals()`) o un aderente, dello stesso sistema o di un altro (R3);
+- gli stati sono `invited`, `accepted`, `declined`, `revoked` e `completed`. Con un aderente di un altro sistema, `accepted` e `declined` seguono la sua risposta (R24, vedi «Eventi fra studi»).
 
-La struttura è una sola: tutte le chiavi ci sono sempre, anche quando valgono `null`, nella testata (`counterparty`, `expires_at`, `responded_at`, `signed_at`, `closed_at`), nella controparte, nelle attività, nel compenso e nella descrizione. Una chiave mancante è un 422; i DTO del pacchetto le emettono tutte. `audience` non cambia dopo la prima registrazione.
+La struttura è una sola: tutte le chiavi ci sono sempre, anche quando valgono `null`, nella testata (`responded_at`, `signed_at`, `closed_at`), nella controparte, nelle attività, nel compenso e nella descrizione. Una chiave mancante è un 422; i DTO del pacchetto le emettono tutte.
 
-`signed_at` è la data della firma dell'incarico, a mano o elettronica, che il sistema registra (R8, R22). È `null` in `published`, `withdrawn`, `invited` e `declined`; facoltativa in `accepted`, dove `null` vuol dire «accettato, in attesa di firma», e in `revoked`; obbligatoria in `completed`. Sta fra `responded_at`, che vuole, e `closed_at`. La firma viene prima del lavoro: senza firma nessuna attività è `completed` e i minuti lavorati sono `null` o `0`, anche in un'attività `revoked`; un'attività `completed` non chiude prima della firma. Una volta mandata, la firma non torna `null`: il pacchetto non conosce la revisione precedente, il controllo lo fa il portale (R13).
+Ogni transazione ha un `id`, un UUID v7 in minuscolo che la outbox genera al primo salvataggio e rimanda identico a ogni revisione (R23): gli eventi fra studi lo citano. `$model->platformTransactionId()` lo dà già dentro la transazione del database del salvataggio, prima di qualunque risposta del portale.
+
+`signed_at` è la data della firma dell'incarico, a mano o elettronica, che il sistema registra (R8, R22). È `null` in `invited` e `declined`; facoltativa in `accepted`, dove `null` vuol dire «accettato, in attesa di firma», e in `revoked`; obbligatoria in `completed`. Sta fra `responded_at`, che vuole, e `closed_at`. La firma viene prima del lavoro: senza firma nessuna attività è `completed` e i minuti lavorati sono `null` o `0`, anche in un'attività `revoked`; un'attività `completed` non chiude prima della firma. Una volta mandata, la firma non torna `null`: il pacchetto non conosce la revisione precedente, il controllo lo fa il portale (R13).
 
 Ogni transazione ha le sue attività (`TransactionActivityData`), ognuna con il proprio compenso a ore o a corpo, i minuti previsti (sempre obbligatori), lo stato, i minuti lavorati alla chiusura e la descrizione con i soli nomi del catalogo. `totalCents()` dà il totale come lo calcola il portale.
 
-La testata porta anche `title` (testo semplice, da 1 a 255 caratteri) e `description` (Markdown, al massimo 10000 caratteri; l'HTML dentro il testo non è un errore). Sono obbligatori e non vuoti in ogni stato. Regola R6: niente testo libero nelle descrizioni delle attività; `title` e `description` sono testi dello studio, senza dati del cliente; un incarico pubblicato li mostra sul portale.
+La testata porta anche `title` (testo semplice, da 1 a 255 caratteri) e `description` (Markdown, al massimo 10000 caratteri; l'HTML dentro il testo non è un errore). Sono obbligatori e non vuoti in ogni stato. Regola R6: niente testo libero nelle descrizioni delle attività; `title` e `description` sono testi dello studio, senza dati del cliente.
 
 I DTO sono tipizzati e non conoscono i modelli del sistema: è il sistema che mappa i suoi modelli su di loro, di solito in una sola classe.
 
 | DTO | Cosa porta |
 | --- | --- |
 | `TransactionData` | La testata dell'invio, con `title` e `description` dello studio, e le sue attività |
-| `CounterpartyData` | `CounterpartyData::person($codiceFiscale, $nome, $cognome, $email, $partitaIva, $comune, $provincia)`, con l'email obbligatoria e gli ultimi tre facoltativi: l'anagrafica al momento dell'invio, identica a ogni revisione (R13). Oppure `CounterpartyData::member($idAderente)`. L'email della persona va in minuscolo, come il portale la salva e la restituisce (T6). Sul filo ha sempre le nove chiavi `type`, `member_id`, `tax_code`, `first_name`, `last_name`, `email`, `vat_number`, `municipality`, `province` |
+| `CounterpartyData` | `CounterpartyData::person($codiceFiscale, $nome, $cognome, $email, $partitaIva, $comune, $provincia)`, con l'email obbligatoria e gli ultimi tre facoltativi: l'anagrafica al momento dell'invio, identica a ogni revisione (R13). Per un consulente registrato, `$consulente->toCounterparty()`. Oppure `CounterpartyData::member($idAderente)`, di questo sistema o di un altro. L'email della persona va in minuscolo, come il portale la salva e la restituisce (T6). Sul filo ha sempre le nove chiavi `type`, `member_id`, `tax_code`, `first_name`, `last_name`, `email`, `vat_number`, `municipality`, `province` |
 | `TransactionActivityData` | Un'attività: riferimento, compenso, minuti, stato, chiusura, descrizione |
 | `CompensationData` | `CompensationData::hourly($centesimiAllOra)` o `CompensationData::fixed($centesimi)` |
 | `ActivityDescriptionData` | Il processo dell'attività (`ProcessData`, obbligatorio), il nome dell'attività nel catalogo, o `null`, e la scadenza `Y-m-d` |
@@ -298,7 +276,6 @@ I DTO sono tipizzati e non conoscono i modelli del sistema: è il sistema che ma
 ```php
 $diretto = new TransactionData(
     assignment_reference: $incarico->uuid,
-    audience: Audience::Person,
     principal: $idAderente,
     counterparty: CounterpartyData::person('RSSMRA80A01H501U', 'Mario', 'Rossi', 'mario.rossi@example.com', municipality: 'Bari', province: 'BA'),
     typology: 'commercialisti',
@@ -316,9 +293,9 @@ $diretto = new TransactionData(
 );
 ```
 
-Un incarico pubblicato ha `counterparty: null`, `status: TransactionStatus::Published`, `expires_at` e `audience: Audience::Any` (o `Person`, `Member`). I minuti lavorati dipendono dal tipo della controparte: con una persona sono obbligatori in un'attività `completed`, con un aderente o senza controparte sono sempre `null` (R5).
+I minuti lavorati dipendono dal tipo della controparte: con una persona sono obbligatori in un'attività `completed`, con un aderente sono sempre `null` (R5).
 
-La parte ferma all'invio (audience, controparte, tipologia, testi, prezzi) non cambia fra una revisione e l'altra (R13). Il modello che registra la transazione la costruisce da quello che ha fotografato all'invio, non dalle anagrafiche di oggi; un cambio dell'anagrafica si dichiara a parte (vedi «Anagrafica dei professionisti»). `TransactionData::from()` legge anche il corpo del portale, con la descrizione nella forma dello schema (`{"process": {"reference": "…", "name": "…"}, "activity": {"name": "…"}}`).
+La parte ferma all'invio (controparte, tipologia, testi, prezzi) non cambia fra una revisione e l'altra (R13). Il modello che registra la transazione la costruisce da quello che ha fotografato all'invio, non dalle anagrafiche di oggi; un cambio dell'anagrafica si dichiara a parte (vedi «Anagrafica dei professionisti»). `TransactionData::from()` legge anche il corpo del portale, con la descrizione nella forma dello schema (`{"process": {"reference": "…", "name": "…"}, "activity": {"name": "…"}}`).
 
 Il modello che corrisponde all'invio lo dichiara con un'interfaccia, e il pacchetto fa il resto:
 
@@ -362,87 +339,33 @@ final class ExternalAssignmentActivity extends Model implements AffectsPlatformT
 
 - Un trait usato senza la sua interfaccia lancia una `LogicException`.
 - Ogni salvataggio scrive la versione attuale in una outbox (`php artisan migrate` crea la tabella `platform_transaction_outbox`), nella stessa transazione del database, con una revisione nuova solo se qualcosa è cambiato. Le date si confrontano in UTC, come le restituisce il portale: lo stesso istante scritto in un altro fuso non è un cambio. Una bozza, con il riferimento a `null`, non ci arriva. L'outbox tiene solo l'ultima versione: se l'invio di `invited` non è riuscito e intanto l'incarico è stato accettato, al portale arriva come prima registrazione la versione `accepted`, ed è accettata.
-- Un job in coda la manda con `PUT /transactions/{reference}`. Riprova sugli errori di rete e su un sistema non ancora attivo; si ferma, segnando l'errore, su una violazione del contratto o un conflitto. Vale anche quando la violazione la trova il pacchetto prima della richiesta, per esempio su una versione salvata prima che cambiasse una regola: la riga finisce `failed` e `platform:send-outbox` non la riprende.
+- Un job in coda la manda con `PUT /transactions/{reference}`, con il suo `id`. Riprova sugli errori di rete e su un sistema non ancora attivo; si ferma, segnando l'errore, su una violazione del contratto o un conflitto. Vale anche quando la violazione la trova il pacchetto prima della richiesta, per esempio su una versione salvata prima che cambiasse una regola: la riga finisce `failed` e `platform:send-outbox` non la riprende.
 - `$model->isRecordedOnPlatform()` dice se il portale ha confermato la versione attuale. La registrazione segue il lavoro, non lo blocca.
 - Ogni cinque minuti il comando schedulato `platform:send-outbox` rimanda le versioni rimaste indietro, per esempio mentre il sistema era in attesa di verifica.
 - Una transazione non si cancella: un invio ritirato si salva come `revoked`, con tutte le attività chiuse.
-- Lo storico si carica con `Platform::recordTransactions()`, fino a 500 per chiamata, con le stesse regole della PUT (R10). Ogni transazione che il portale ha (`created`, `updated`, `unchanged`) entra nella outbox come già confermata, così la outbox conosce ogni persona incaricata. `Platform::transactions()` legge il registro del sistema, con il filtro `audience`.
+- Lo storico si carica con `Platform::recordTransactions()`, fino a 500 per chiamata, con le stesse regole della PUT (R10). Il pacchetto dà a ogni transazione il suo `id` prima della richiesta, e una transazione nuova entra nella outbox come da mandare: se il batch non risponde, `platform:send-outbox` la manda con lo stesso id; una che il portale rifiuta finisce `failed` con il suo errore. Ogni transazione che il portale ha (`created`, `updated`, `unchanged`) entra nella outbox come già confermata, così la outbox conosce ogni persona incaricata.
+- `Platform::transactions()` legge le transazioni in cui il committente o la controparte è un aderente del sistema, con i filtri `status` e `updatedSince`. `Platform::transaction($id)` ne legge una per id, anche dalla parte della controparte; se il sistema non la vede, `TransactionNotFoundException` (il portale risponde con un elenco vuoto, mai 404).
+- `Platform::recordTransaction($reference, $id, $transazione, $revisione)` fa la sola chiamata, senza outbox: l'`id` dev'essere un UUID in minuscolo, lo stesso a ogni revisione.
 - Nei test del sistema `PlatformOutbox::assertRecorded($model)` verifica che la versione attuale sia nella outbox, `PlatformOutbox::assertNotRecorded($model)` che una bozza non ci sia.
 
-## Candidature e scelta della controparte
+## Consulenti registrati
 
-Un incarico pubblicato trova la sua controparte sul portale. I professionisti registrati, agli incarichi `person` o `any`, e gli studi aderenti di un altro sistema, agli incarichi `member` o `any` (L10), si candidano accettandone le condizioni, e il committente sceglie: la scelta porta l'incarico da `published` ad `accepted` (regole L2–L8). Il sistema del committente riceve quattro eventi del portale:
-
-| Tipo | Payload | Quando |
-| --- | --- | --- |
-| `transaction.application_received` | `ApplicationReceivedData` | Una candidatura nuova, `pending` |
-| `transaction.application_withdrawn` | `ApplicationWithdrawnData` | Una candidatura ritirata, con `closed_at` |
-| `transaction.counterparty_selected` | `CounterpartySelectedData` | La scelta, fatta dal sistema con l'API o dallo studio dalla sua area |
-| `transaction.withdrawn` | `TransactionWithdrawnData` | Il ritiro automatico di un incarico rimasto senza scelta dopo la scadenza (L9) |
+I consulenti che si registrano sul portale e danno il consenso a essere trovati dagli studi si cercano senza contatti, e si leggono uno alla volta con i dati per affidare un incarico (N1–N5). L'incarico è poi come ogni incarico a persona: il sistema lo registra con la controparte persona e lo porta avanti da sé.
 
 ```php
-use ITuoiProfessionistiDigitali\Connector\Contract;
-use ITuoiProfessionistiDigitali\Connector\Data\CounterpartySelectedData;
+$pagina = Platform::searchProfessionals(typology: 'commercialisti', province: 'BA', search: 'rossi');   // ProfessionalPage
 
-if ($envelope->type === Contract::COUNTERPARTY_SELECTED)
-{
-    $scelta = CounterpartySelectedData::from($envelope->payload);
-    $scelta->transaction;            // RecordedTransactionData, accepted, con la controparte persona o aderente
-    $scelta->application;            // ApplicationData, selected
-    $scelta->contact?->mobile;       // il cellulare in E.164, fuori dalla controparte; null per uno studio
-}
+foreach ($pagina->professionals as $consulente) { /* ListedProfessionalData: id, nome, cognome, comune, provincia, tipologie, tax_code_verified */ }
+
+$consulente = Platform::professional($id);   // ProfessionalData, con codice fiscale, email, cellulare e partita IVA
+$controparte = $consulente->toCounterparty();
 ```
 
-- Una candidatura (`ApplicationData`) porta lo stato, `applied_at`, il consenso alle condizioni (`terms_accepted_at`), la revisione accettata (`accepted_revision`) e il candidato (`ApplicantData`). Un professionista ha nome, cognome, comune, provincia e `tax_code_verified`; uno studio (`$candidato->isMember()`) ha `name`, comune e provincia, con i campi della persona a `null`, e il suo id arriva solo con la scelta, nella controparte. Codice fiscale, email e partita IVA arrivano solo con la scelta, nella controparte, e il cellulare solo nell'evento della scelta (L7).
-- `Platform::applications($reference, ApplicationStatus::Pending, perPage: 25, cursor: null)` legge le candidature di un incarico, una pagina alla volta (`ApplicationPage`).
-- `Platform::selectApplication($reference, $idCandidatura)` sceglie e restituisce la transazione `accepted`. Scegliere di nuovo la stessa candidatura risponde con la transazione com'è. I rifiuti hanno un'eccezione propria: `TransactionNotFoundException` (404, la `reference` non è del sistema), `ApplicationNotSelectableException` (422 su `application`: candidatura sconosciuta, di un'altra transazione o non più `pending`) e `TransactionNotPublishedException` (422 su `status`: incarico ritirato o già accettato). Non si ritentano.
-- `transaction.counterparty_selected` arriva **sempre**, anche quando la scelta l'ha fatta il sistema: è la strada unica per creare quello che serve, come l'anagrafica della persona scelta. Il listener è idempotente sull'`event_id` e sulla `reference`.
-- Con la scelta il portale registra la transazione alla sua revisione più 1. Il pacchetto la scrive nella outbox come confermata, sia dalla risposta di `selectApplication()` sia dall'evento, prima dei listener. Se la outbox ha già una revisione più alta, resta com'è. Il prossimo salvataggio del modello parte quindi dalla revisione successiva, senza conflitti; una versione rimasta in attesa alla stessa revisione, come un ritiro, è sostituita dalla scelta, che il portale non disfa.
-- Scelto uno studio, la controparte è `{"type": "member", "member_id": …}` con i campi della persona a `null`, anche se l'aderente è di un altro sistema, e `contact` è `null`: i due studi si scambiano i dati con `coworking.contract_details`.
-- Da lì il modello continua come un incarico affidato: `accepted`, la controparte identica a quella ricevuta (`$scelta->transaction->counterparty`), `responded_at` della scelta, `signed_at` alla firma. `audience` ed `expires_at` restano quelli della pubblicazione (R16): un incarico pubblicato per `any` resta `any`. `RecordedTransactionData::toTransaction()` dà la transazione come il sistema la rimanda.
-
-### Candidarsi come studio
-
-Un aderente del sistema si candida agli incarichi pubblicati per gli studi da committenti di **altri** sistemi (L1, L10). Il committente resta anonimo fino alla scelta: dell'inserzione esce solo la sede (L7).
-
-```php
-use ITuoiProfessionistiDigitali\Connector\Facades\Platform;
-
-$pagina = Platform::listings('commercialisti', perPage: 25);   // ListingPage, dalla più recente
-$inserzione = Platform::listing($id);                          // ListingData
-
-// Prima raccogli il consenso esplicito di chi decide per lo studio: candidarsi accetta le condizioni
-$candidatura = Platform::apply($inserzione->id, $idAderente);  // MemberApplicationData, pending
-Platform::withdrawApplication($inserzione->id, $candidatura->id);
-
-$mie = Platform::memberApplications($idAderente, ApplicationStatus::Pending);   // MemberApplicationPage
-```
-
-- `ListingData` ha l'id della transazione, la tipologia, `audience`, titolo e testo, la sede del committente (`ListingPrincipalData`), `sent_at`, `expires_at`, i totali e le attività (`ListingActivityData`) con compenso, minuti previsti, totale e descrizione col processo. `revision` è quella di cui la candidatura accetta le condizioni.
-- `apply()` manda sempre `terms_accepted: true`: chiamalo solo dopo il consenso. La stessa candidatura ripetuta risponde con quella esistente.
-- Le eccezioni non si ritentano: `ListingNotFoundException` (404, inserzione non più visibile), `ApplicationRefusedException` (422 su `member`: aderente non attivo, senza la tipologia o candidatura già ritirata, con i messaggi in `->messages`), `ApplicationNotFoundException` (404 sul ritiro, candidatura di un altro sistema) e `ApplicationNotWithdrawableException` (422 sul ritiro, candidatura già scelta o rifiutata).
-- `memberApplications()` dice come sono andate le candidature: `declined` è un'altra scelta o l'incarico ritirato; `selected` arriva insieme a `transaction.assignment_received`, e da lì la transazione esce anche in `Platform::transactions()`.
-
-### Ritiro automatico
-
-Un incarico ancora `published` senza una scelta lo ritira il portale, alcuni giorni dopo `expires_at`: 30, ma li configura l'operatore del portale, quindi il sistema non ci conta come su un valore fisso (regola L9). Il portale porta la transazione in `withdrawn`, con `closed_at` all'istante del ritiro e la revisione registrata più 1, chiude le candidature `pending` come `declined` e manda `transaction.withdrawn` al sistema del committente. Il ritiro fatto dal sistema con un `PUT` non genera eventi.
-
-```php
-use ITuoiProfessionistiDigitali\Connector\Contract;
-use ITuoiProfessionistiDigitali\Connector\Data\TransactionWithdrawnData;
-use ITuoiProfessionistiDigitali\Connector\Enums\WithdrawalReason;
-
-if ($envelope->type === Contract::TRANSACTION_WITHDRAWN && $envelope->isFromPlatform())
-{
-    $ritiro = TransactionWithdrawnData::from($envelope->payload);
-    $ritiro->transaction;            // RecordedTransactionData, withdrawn, con closed_at
-    $ritiro->reason;                 // WithdrawalReason::Expired
-}
-```
-
-- Come per la scelta, il pacchetto scrive la transazione ritirata nella outbox come confermata, prima dei listener, salvo una revisione più alta. Un ritiro del sistema rimasto in attesa, o rifiutato con un 409 alla stessa revisione perché il portale aveva già ritirato, è sostituito da quello del portale: la riga `failed` di questa corsa si sistema da sola con l'evento.
-- Il listener è in coda e idempotente sull'`event_id` e sulla `reference`. Se l'invio nel sistema è ancora pubblicato, lo ritira come un ritiro a mano, con il `closed_at` dell'evento, così la outbox non manda una revisione nuova. Se è già ritirato, o non c'è più, non fa nulla.
-- Ritiro e scelta non si sovrappongono: per una `reference` arriva al massimo uno dei due eventi. Una scelta dopo il ritiro risponde con `TransactionNotPublishedException`.
+- L'elenco non ha contatti: codice fiscale, email, cellulare e partita IVA escono solo dal dettaglio (N3).
+- Il portale registra ogni lettura del dettaglio (N5): leggilo quando lo studio sta per affidare l'incarico, non per riempire un elenco. I contatti sono dati personali: niente cache, niente log, niente copie fuori dall'anagrafica che il sistema crea per l'incarico.
+- Un consulente che non è più consultabile, anche perché ha revocato il consenso, è `ProfessionalNotFoundException`: il portale non dice perché.
+- `tax_code_verified: false` vuol dire un codice fiscale dichiarato, con il solo controllo formale.
+- L'anagrafica di un consulente registrato è bloccata sul portale (R20): l'incarico la fotografa così com'è.
 
 ## Anagrafica dei professionisti
 
@@ -474,7 +397,7 @@ resolve(ProfessionalOutbox::class)->declare($collaboratore->codice_fiscale, new 
 
 ## Errori
 
-Ogni rifiuto del portale è una `PlatformRequestException`, con `->status`, `->errors` (chiavi puntate come `payload.challenge`), `->reason` per i 403 (`SystemStatus`) e `->existingEvent` per i 409. Lo è anche quando il pacchetto rifiuta prima di mandare per lo schema del payload o per un limite, come le 500 transazioni. Un DTO che viola il contratto è invece una `ValidationException` di Laravel, con le stesse chiavi puntate in `->errors()`, prima di qualunque richiesta, come due email uguali nella stessa `syncMembers()`. Hanno un'eccezione propria due 404, `ProfessionalNotAssignedException` per l'anagrafica e `MemberNotAccessibleException` per il link d'accesso, e due 422 di `syncMembers()`, `ConcurrentMemberSyncException` e `MemberEmailsRejectedException`. Anche le candidature e la scelta hanno le loro: `TransactionNotFoundException` per il 404, `ApplicationNotSelectableException` e `TransactionNotPublishedException` per i 422 della scelta. Il limite dei 1000 aderenti è invece una `ValidationException` su `members`, che non si confonde con la corsa. Anche oltre le 500 attività di una transazione la `ValidationException` è sul solo `activities`, senza gli errori delle singole attività. Senza credenziali il client lancia `PlatformNotConfiguredException`.
+Ogni rifiuto del portale è una `PlatformRequestException`, con `->status`, `->errors` (chiavi puntate come `payload.challenge`), `->reason` per i 403 (`SystemStatus`) e `->existingEvent` per i 409. Lo è anche quando il pacchetto rifiuta prima di mandare per lo schema del payload o per un limite, come le 500 transazioni. Un DTO che viola il contratto è invece una `ValidationException` di Laravel, con le stesse chiavi puntate in `->errors()`, prima di qualunque richiesta. Hanno un'eccezione propria i 404 di `declareProfessional()` (`ProfessionalNotAssignedException`), di `member()` (`MemberNotFoundException`) e di `professional()` (`ProfessionalNotFoundException`), e l'elenco vuoto di `transaction()` (`TransactionNotFoundException`). Il limite dei 1000 aderenti è invece una `ValidationException` su `members`. Anche oltre le 500 attività di una transazione la `ValidationException` è sul solo `activities`, senza gli errori delle singole attività. Senza credenziali il client lancia `PlatformNotConfiguredException`.
 
 Un 429 non è un errore della richiesta (T7). Il client aspetta da solo un `Retry-After` fino a 10 secondi e ripete la richiesta; uno più lungo, o senza un numero di secondi, è una `PlatformRequestException` con `isThrottled()` e i secondi in `->retryAfter` (60 se l'header manca). I job delle outbox rimettono la riga in coda dopo quel tempo, senza contarlo come un errore.
 
