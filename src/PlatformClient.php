@@ -22,8 +22,11 @@ use ITuoiProfessionistiDigitali\Connector\Data\EventTypeData;
 use ITuoiProfessionistiDigitali\Connector\Data\FileData;
 use ITuoiProfessionistiDigitali\Connector\Data\FileReferenceData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListedMemberData;
+use ITuoiProfessionistiDigitali\Connector\Data\ListedProfessionalData;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberData;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberPage;
+use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalData;
+use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalPage;
 use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalRecordData;
 use ITuoiProfessionistiDigitali\Connector\Data\RecordedTransactionData;
 use ITuoiProfessionistiDigitali\Connector\Data\RegisteredMemberData;
@@ -35,9 +38,11 @@ use ITuoiProfessionistiDigitali\Connector\Data\TypologyData;
 use ITuoiProfessionistiDigitali\Connector\Enums\SystemStatus;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\FileGoneException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\FileIntegrityException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformNotConfiguredException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ProfessionalNotAssignedException;
+use ITuoiProfessionistiDigitali\Connector\Exceptions\ProfessionalNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\TransactionNotFoundException;
 use ITuoiProfessionistiDigitali\Connector\Outbox\TransactionOutbox;
 use ITuoiProfessionistiDigitali\Connector\Support\FileHash;
@@ -156,6 +161,63 @@ final readonly class PlatformClient
             nextCursor: $this->cursor($response, 'next_cursor'),
             previousCursor: $this->cursor($response, 'prev_cursor'),
         );
+    }
+
+    /**
+     * GET /members/{id}: a member of another system, listed or linked to the system by a transaction, as the search
+     * shows it (rule M16): the principal of an offer received, for instance.
+     *
+     * @throws MemberNotFoundException
+     */
+    public function member(string $memberId): ListedMemberData
+    {
+        try
+        {
+            return ListedMemberData::from($this->data($this->request('GET', 'members/'.rawurlencode($memberId))));
+        }
+        catch (PlatformRequestException $exception)
+        {
+            throw $exception->status === 404 ? new MemberNotFoundException($memberId) : $exception;
+        }
+    }
+
+    /**
+     * GET /professionals: the consultants registered on the platform who agreed to be found by the firms, without
+     * contacts (rules N1–N3).
+     */
+    public function searchProfessionals(?string $typology = null, ?string $province = null, ?string $search = null, ?int $perPage = null, ?string $cursor = null): ProfessionalPage
+    {
+        $response = $this->request('GET', 'professionals', $this->query([
+            'typology' => $typology,
+            'province' => $province,
+            'search' => $search,
+            'per_page' => $perPage,
+            'cursor' => $cursor,
+        ]));
+
+        return new ProfessionalPage(
+            professionals: array_map(ListedProfessionalData::from(...), $this->list($response)),
+            nextCursor: $this->cursor($response, 'next_cursor'),
+            previousCursor: $this->cursor($response, 'prev_cursor'),
+        );
+    }
+
+    /**
+     * GET /professionals/{id}: a consultant with the data to offer an assignment (rule N4). The platform keeps the
+     * reading (rule N5): read it when the firm is about to assign, not to fill a list.
+     *
+     * @throws ProfessionalNotFoundException
+     */
+    public function professional(string $professionalId): ProfessionalData
+    {
+        try
+        {
+            return ProfessionalData::from($this->data($this->request('GET', 'professionals/'.rawurlencode($professionalId))));
+        }
+        catch (PlatformRequestException $exception)
+        {
+            throw $exception->status === 404 ? new ProfessionalNotFoundException($professionalId) : $exception;
+        }
     }
 
     /**
