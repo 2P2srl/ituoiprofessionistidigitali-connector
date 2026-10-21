@@ -4,17 +4,15 @@ declare(strict_types=1);
 
 namespace ITuoiProfessionistiDigitali\Connector\Data;
 
-use Closure;
 use Illuminate\Validation\Rule;
-use ITuoiProfessionistiDigitali\Connector\Enums\Audience;
 use ITuoiProfessionistiDigitali\Connector\Enums\CounterpartyType;
 use ITuoiProfessionistiDigitali\Connector\Validation\Rules\ItalianTaxCode;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Support\Validation\ValidationContext;
 
 /**
- * Who receives the work: a professional with the details of the sending, or a member of the same system by its id
- * (rules R3 and R13). It has one form on the wire, with every key: null where the type does not use it.
+ * Who receives the work: a professional with the details of the sending, or a member by its id, of the same system or
+ * of another one (rules R3 and R13). It has one form on the wire, with every key: null where the type does not use it.
  * The email of a person is kept in lower case, as the platform stores and returns it (T6).
  */
 final class CounterpartyData extends Data
@@ -70,15 +68,13 @@ final class CounterpartyData extends Data
     public static function rules(ValidationContext $context): array
     {
         $counterparty = is_array($context->payload) ? $context->payload : [];
-        $transaction = is_array($context->fullPayload) ? $context->fullPayload : [];
-        $audience = Audience::tryFrom(TransactionActivityData::value($transaction['audience'] ?? null));
         $isPerson = TransactionActivityData::value($counterparty['type'] ?? null) === CounterpartyType::Person->value;
         // An optional field of a person given empty is an error, not a missing value
         $person = static fn (string $field, mixed ...$rules): array => self::personRules($counterparty, $isPerson, $field, $rules);
         $details = ProfessionalRecordData::detailRules();
 
         return [
-            'type' => ['required', Rule::enum(CounterpartyType::class), self::followsAudience($audience)],
+            'type' => ['required', Rule::enum(CounterpartyType::class)],
             'member_id' => ['present', Rule::requiredIf(!$isPerson), Rule::prohibitedIf($isPerson), 'nullable', 'uuid'],
             'tax_code' => [Rule::requiredIf($isPerson), ...$person('tax_code', 'string', new ItalianTaxCode(personOnly: true))],
             'first_name' => [Rule::requiredIf($isPerson), ...$person('first_name', ...$details['first_name'])],
@@ -120,20 +116,5 @@ final class CounterpartyData extends Data
     private static function personRules(array $counterparty, bool $isPerson, string $field, array $rules): array
     {
         return ['present', Rule::requiredIf(($counterparty[$field] ?? null) === ''), Rule::prohibitedIf(!$isPerson), 'nullable', ...array_values($rules)];
-    }
-
-    /**
-     * R3: the counterparty is of a type the audience admits; anyone admits both.
-     */
-    private static function followsAudience(?Audience $audience): Closure
-    {
-        return static function (string $attribute, mixed $value, Closure $fail) use ($audience): void {
-            $type = CounterpartyType::tryFrom(TransactionActivityData::value($value));
-
-            if ($audience !== null && $type !== null && !$audience->admits($type))
-            {
-                $fail("La controparte non è ammessa da audience {$audience->value}.");
-            }
-        };
     }
 }

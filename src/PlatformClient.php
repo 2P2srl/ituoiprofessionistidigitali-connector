@@ -17,18 +17,11 @@ use Illuminate\Support\Sleep;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use ITuoiProfessionistiDigitali\Connector\Data\AcceptedEventData;
-use ITuoiProfessionistiDigitali\Connector\Data\AccessLinkData;
-use ITuoiProfessionistiDigitali\Connector\Data\ApplicationData;
-use ITuoiProfessionistiDigitali\Connector\Data\ApplicationPage;
 use ITuoiProfessionistiDigitali\Connector\Data\EnvelopeData;
 use ITuoiProfessionistiDigitali\Connector\Data\EventTypeData;
 use ITuoiProfessionistiDigitali\Connector\Data\FileData;
 use ITuoiProfessionistiDigitali\Connector\Data\FileReferenceData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListedMemberData;
-use ITuoiProfessionistiDigitali\Connector\Data\ListingData;
-use ITuoiProfessionistiDigitali\Connector\Data\ListingPage;
-use ITuoiProfessionistiDigitali\Connector\Data\MemberApplicationData;
-use ITuoiProfessionistiDigitali\Connector\Data\MemberApplicationPage;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberData;
 use ITuoiProfessionistiDigitali\Connector\Data\MemberPage;
 use ITuoiProfessionistiDigitali\Connector\Data\ProfessionalRecordData;
@@ -39,25 +32,12 @@ use ITuoiProfessionistiDigitali\Connector\Data\TransactionData;
 use ITuoiProfessionistiDigitali\Connector\Data\TransactionOutcomeData;
 use ITuoiProfessionistiDigitali\Connector\Data\TransactionPage;
 use ITuoiProfessionistiDigitali\Connector\Data\TypologyData;
-use ITuoiProfessionistiDigitali\Connector\Enums\ApplicationStatus;
-use ITuoiProfessionistiDigitali\Connector\Enums\Audience;
 use ITuoiProfessionistiDigitali\Connector\Enums\SystemStatus;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationNotFoundException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationNotSelectableException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationNotWithdrawableException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\ApplicationRefusedException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\ConcurrentMemberSyncException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\FileGoneException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\FileIntegrityException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\ListingNotFoundException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberEmailsRejectedException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\MemberNotAccessibleException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformNotConfiguredException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\ProfessionalNotAssignedException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\TransactionNotFoundException;
-use ITuoiProfessionistiDigitali\Connector\Exceptions\TransactionNotPublishedException;
 use ITuoiProfessionistiDigitali\Connector\Outbox\TransactionOutbox;
 use ITuoiProfessionistiDigitali\Connector\Support\FileHash;
 use ITuoiProfessionistiDigitali\Connector\Validation\PayloadValidator;
@@ -132,17 +112,13 @@ final readonly class PlatformClient
     }
 
     /**
-     * PUT /members: the complete list of the system's members. Those left out become inactive.
-     * Two members of the request cannot share an email, whatever its case (rules M15, T6): MemberData lowercases it,
-     * and the check ignores case also for an email changed after construction. The platform also refuses the email of
-     * a member of another system, which the package cannot know.
+     * PUT /members: the complete list of the system's members. Those left out become inactive. Two requests of the
+     * system at the same moment are applied one after the other, and the last wins (rule M6).
      *
      * @param  list<MemberData>  $members
      * @return list<RegisteredMemberData>
      *
      * @throws ValidationException
-     * @throws ConcurrentMemberSyncException
-     * @throws MemberEmailsRejectedException
      */
     public function syncMembers(array $members): array
     {
@@ -150,7 +126,7 @@ final readonly class PlatformClient
 
         validator(
             ['members' => $payload],
-            ['members' => ['max:'.Contract::MAX_MEMBERS], 'members.*.email' => ['distinct:ignore_case']],
+            ['members' => ['max:'.Contract::MAX_MEMBERS]],
             ['members.max' => 'Al massimo :max aderenti in una sola richiesta.'],
         )->validate();
 
@@ -159,16 +135,7 @@ final readonly class PlatformClient
             MemberData::validate($member);
         }
 
-        try
-        {
-            $response = $this->request('PUT', 'members', ['members' => $payload]);
-        }
-        catch (PlatformRequestException $exception)
-        {
-            throw $this->memberRefusal($exception, $members);
-        }
-
-        return array_map(RegisteredMemberData::from(...), $this->list($response));
+        return array_map(RegisteredMemberData::from(...), $this->list($this->request('PUT', 'members', ['members' => $payload])));
     }
 
     /**
@@ -188,27 +155,6 @@ final readonly class PlatformClient
             nextCursor: $this->cursor($response, 'next_cursor'),
             previousCursor: $this->cursor($response, 'prev_cursor'),
         );
-    }
-
-    /**
-     * POST /members/{id}/access-links: a link to the area of the member on the platform (rules U1–U4). The access is
-     * for the firm, not for a person: the request has no body, and who clicked stays in the system. The link is a
-     * secret: see AccessLinkData.
-     *
-     * @throws MemberNotAccessibleException
-     */
-    public function memberAccessLink(string $memberId): AccessLinkData
-    {
-        try
-        {
-            return AccessLinkData::from($this->data(
-                $this->request('POST', 'members/'.rawurlencode($memberId).'/access-links'),
-            ));
-        }
-        catch (PlatformRequestException $exception)
-        {
-            throw $exception->status === 404 ? new MemberNotAccessibleException($memberId) : $exception;
-        }
     }
 
     /**
@@ -309,11 +255,10 @@ final readonly class PlatformClient
     /**
      * GET /transactions: the transactions of the members of the system (rule R11).
      */
-    public function transactions(?string $status = null, ?Audience $audience = null, ?DateTimeInterface $updatedSince = null, ?int $perPage = null, ?string $cursor = null): TransactionPage
+    public function transactions(?string $status = null, ?DateTimeInterface $updatedSince = null, ?int $perPage = null, ?string $cursor = null): TransactionPage
     {
         $response = $this->request('GET', 'transactions', $this->query([
             'status' => $status,
-            'audience' => $audience?->value,
             'updated_since' => $updatedSince === null ? null : CarbonImmutable::instance($updatedSince)->format(Contract::DATE_FORMAT),
             'per_page' => $perPage,
             'cursor' => $cursor,
@@ -321,168 +266,6 @@ final readonly class PlatformClient
 
         return new TransactionPage(
             transactions: array_map(RecordedTransactionData::from(...), $this->list($response)),
-            nextCursor: $this->cursor($response, 'next_cursor'),
-        );
-    }
-
-    /**
-     * GET /transactions/{reference}/applications: the applications to a published transaction of the system, by
-     * applied_at (rule L7). A transaction born with its counterparty has none; after the selection they stay, selected
-     * and declined.
-     *
-     * @throws TransactionNotFoundException
-     */
-    public function applications(string $reference, ?ApplicationStatus $status = null, ?int $perPage = null, ?string $cursor = null): ApplicationPage
-    {
-        try
-        {
-            $response = $this->request('GET', 'transactions/'.rawurlencode($reference).'/applications', $this->query([
-                'status' => $status?->value,
-                'per_page' => $perPage,
-                'cursor' => $cursor,
-            ]));
-        }
-        catch (PlatformRequestException $exception)
-        {
-            throw $exception->status === 404 ? new TransactionNotFoundException($reference) : $exception;
-        }
-
-        return new ApplicationPage(
-            applications: array_map(ApplicationData::from(...), $this->list($response)),
-            nextCursor: $this->cursor($response, 'next_cursor'),
-        );
-    }
-
-    /**
-     * POST /transactions/{reference}/selection: selects a pending application of a published transaction of the
-     * system, which becomes accepted with the person as its counterparty (rule L4). Selecting the same application
-     * again answers with the transaction as it is. The outbox takes the revision of the platform, so the following
-     * changes of the model go out with a higher one; the event transaction.counterparty_selected arrives all the same.
-     *
-     * @throws TransactionNotFoundException
-     * @throws ApplicationNotSelectableException
-     * @throws TransactionNotPublishedException
-     */
-    public function selectApplication(string $reference, string $applicationId): RecordedTransactionData
-    {
-        try
-        {
-            $response = $this->request('POST', 'transactions/'.rawurlencode($reference).'/selection', ['application' => $applicationId]);
-        }
-        catch (PlatformRequestException $exception)
-        {
-            throw $this->selectionRefusal($exception, $reference, $applicationId);
-        }
-
-        $transaction = RecordedTransactionData::from($this->data($response));
-        $this->outbox->changedByPlatform($transaction);
-
-        return $transaction;
-    }
-
-    /**
-     * GET /listings: the published assignments the members of the system may apply to, open to firms, of principals
-     * of other systems, the most recent first (rule L1). The principal stays anonymous but for its seat (rule L7).
-     */
-    public function listings(?string $typology = null, ?int $perPage = null, ?string $cursor = null): ListingPage
-    {
-        $response = $this->request('GET', 'listings', $this->query([
-            'typology' => $typology,
-            'per_page' => $perPage,
-            'cursor' => $cursor,
-        ]));
-
-        return new ListingPage(
-            listings: array_map(ListingData::from(...), $this->list($response)),
-            nextCursor: $this->cursor($response, 'next_cursor'),
-        );
-    }
-
-    /**
-     * GET /listings/{id}: a listing still visible to the system (rule L1).
-     *
-     * @throws ListingNotFoundException
-     */
-    public function listing(string $listingId): ListingData
-    {
-        try
-        {
-            return ListingData::from($this->data($this->request('GET', 'listings/'.rawurlencode($listingId))));
-        }
-        catch (PlatformRequestException $exception)
-        {
-            throw $exception->status === 404 ? new ListingNotFoundException($listingId) : $exception;
-        }
-    }
-
-    /**
-     * POST /listings/{id}/applications: applies a member of the system to a listing (rule L10). Applying means accepting
-     * the conditions of the assignment at its revision, with an explicit consent: collect it in the system, from who
-     * decides for the firm, before calling. The same application again answers with the existing one.
-     *
-     * @throws ListingNotFoundException
-     * @throws ApplicationRefusedException
-     */
-    public function apply(string $listingId, string $memberId): MemberApplicationData
-    {
-        try
-        {
-            $response = $this->request('POST', 'listings/'.rawurlencode($listingId).'/applications', ['member' => $memberId, 'terms_accepted' => true]);
-        }
-        catch (PlatformRequestException $exception)
-        {
-            throw match (true)
-            {
-                $exception->status === 404 => new ListingNotFoundException($listingId),
-                $this->refusedOn($exception) === 'member' => new ApplicationRefusedException($listingId, $memberId, $exception->errors['member'], $exception),
-                default => $exception,
-            };
-        }
-
-        return MemberApplicationData::from($this->data($response));
-    }
-
-    /**
-     * POST /listings/{id}/applications/{application}/withdrawal: withdraws a pending application of a member of the
-     * system (rule L3). Withdrawing it again answers with the application as it is.
-     *
-     * @throws ApplicationNotFoundException
-     * @throws ApplicationNotWithdrawableException
-     */
-    public function withdrawApplication(string $listingId, string $applicationId): MemberApplicationData
-    {
-        try
-        {
-            $response = $this->request('POST', 'listings/'.rawurlencode($listingId).'/applications/'.rawurlencode($applicationId).'/withdrawal');
-        }
-        catch (PlatformRequestException $exception)
-        {
-            throw match (true)
-            {
-                $exception->status === 404 => new ApplicationNotFoundException($listingId, $applicationId),
-                $this->refusedOn($exception) === 'status' => new ApplicationNotWithdrawableException($listingId, $applicationId, $exception->errors['status'], $exception),
-                default => $exception,
-            };
-        }
-
-        return MemberApplicationData::from($this->data($response));
-    }
-
-    /**
-     * GET /applications: the applications of the members of the system, the most recent first, also those decided
-     * by the platform (rules L3 and L10).
-     */
-    public function memberApplications(?string $memberId = null, ?ApplicationStatus $status = null, ?int $perPage = null, ?string $cursor = null): MemberApplicationPage
-    {
-        $response = $this->request('GET', 'applications', $this->query([
-            'member' => $memberId,
-            'status' => $status?->value,
-            'per_page' => $perPage,
-            'cursor' => $cursor,
-        ]));
-
-        return new MemberApplicationPage(
-            applications: array_map(MemberApplicationData::from(...), $this->list($response)),
             nextCursor: $this->cursor($response, 'next_cursor'),
         );
     }
@@ -644,68 +427,6 @@ final readonly class PlatformClient
 
             Sleep::usleep($delay * 1000);
         }
-    }
-
-    /**
-     * The only field a 422 refused, if it refused just one.
-     */
-    private function refusedOn(PlatformRequestException $exception): ?string
-    {
-        $fields = $exception->isContractViolation() ? array_keys($exception->errors) : [];
-
-        return count($fields) === 1 ? (string) $fields[0] : null;
-    }
-
-    /**
-     * The refusals of the selection as their own exceptions: the transaction not of the system, the application that
-     * cannot be selected, the transaction no longer published. Any other refusal stays as it is.
-     */
-    private function selectionRefusal(PlatformRequestException $exception, string $reference, string $applicationId): PlatformException
-    {
-        $field = $this->refusedOn($exception);
-
-        return match (true)
-        {
-            $exception->status === 404 => new TransactionNotFoundException($reference),
-            $field === 'application' => new ApplicationNotSelectableException($reference, $applicationId, $exception->errors['application'], $exception),
-            $field === 'status' => new TransactionNotPublishedException($reference, $exception->errors['status'], $exception),
-            default => $exception,
-        };
-    }
-
-    /**
-     * The 422 of PUT /members as its own exception: on the whole list, another request at the same moment; on the
-     * emails only, the emails taken, by external_ref (rule M15). Any other refusal stays as it is.
-     *
-     * @param  list<MemberData>  $members
-     */
-    private function memberRefusal(PlatformRequestException $exception, array $members): PlatformException
-    {
-        if (!$exception->isContractViolation())
-        {
-            return $exception;
-        }
-
-        if (array_keys($exception->errors) === ['members'])
-        {
-            return new ConcurrentMemberSyncException($exception);
-        }
-
-        $messages = [];
-
-        foreach ($exception->errors as $key => $errors)
-        {
-            $member = preg_match('/^members\.(\d+)\.email$/', $key, $matches) === 1 ? $members[(int) $matches[1]] ?? null : null;
-
-            if ($member === null)
-            {
-                return $exception;
-            }
-
-            $messages[$member->external_ref] = $errors;
-        }
-
-        return $messages === [] ? $exception : new MemberEmailsRejectedException($messages, $exception);
     }
 
     /**

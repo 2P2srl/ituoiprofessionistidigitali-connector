@@ -64,7 +64,7 @@ final class SendPlatformTransaction implements ShouldQueue
         $this->confirmed($row, $revision);
 
         // Only a first registration makes the platform know the person: a declaration of its record may wait for it
-        $taxCode = $transaction->counterparty?->tax_code;
+        $taxCode = $transaction->counterparty->tax_code;
 
         if ($isFirstRegistration && $taxCode !== null)
         {

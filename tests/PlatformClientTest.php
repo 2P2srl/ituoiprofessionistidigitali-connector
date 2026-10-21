@@ -168,7 +168,7 @@ it('M7: publishes the complete list of members and returns their ids', function 
     $registered = Platform::syncMembers([MemberData::validateAndCreate(member())]);
 
     expect($registered[0]->id)->toBe('0199b6f0-4e2a-7b31-9f6c-2d8a1e5b7c43')
-        ->and($registered[0]->email)->toBe('segreteria@studiorossi.example');
+        ->and($registered[0]->external_ref)->toBe('struttura-1');
     Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT' && $request->data() === ['members' => [member()]]);
 });
 
@@ -184,36 +184,6 @@ it('M3: does not publish a member built without validation', function (): void {
 
     Platform::syncMembers([MemberData::from(member(['vat_number' => '01234567890']))]);
 })->throws(ValidationException::class);
-
-it('M15, T6: does not publish the same email twice in a request, whatever its case', function (string $email): void {
-    Http::fake();
-    $first = MemberData::from(member());
-    $first->email = $email;
-
-    try
-    {
-        Platform::syncMembers([$first, MemberData::from(member(['external_ref' => 'struttura-2']))]);
-        $this->fail('The emails should be refused.');
-    }
-    catch (ValidationException $exception)
-    {
-        expect($exception->errors())->toHaveKey('members.1.email');
-        Http::assertNothingSent();
-    }
-})->with([
-    'same case' => ['segreteria@studiorossi.example'],
-    'different case' => ['Segreteria@StudioRossi.Example'],
-]);
-
-it('T6: sends the email of a member in lower case in the request body', function (): void {
-    Http::fake([...token(), 'platform.test/api/v1/members' => Http::response(['data' => [
-        ['id' => '0199b6f0-4e2a-7b31-9f6c-2d8a1e5b7c43', ...member()],
-    ]])]);
-
-    Platform::syncMembers([MemberData::validateAndCreate(member(['email' => 'Segreteria@StudioRossi.Example']))]);
-
-    Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT' && $request->data() === ['members' => [member()]]);
-});
 
 it('M6: does not publish more than a thousand members, with a local refusal that is not a retry', function (): void {
     Http::fake();
@@ -241,7 +211,6 @@ it('M13: searches the members of the other systems with filters and cursor', fun
     $page = Platform::searchMembers(typology: 'commercialisti', search: 'bianchi', cursor: 'start');
 
     expect($page->members[0]->name)->toBe('Studio Bianchi')
-        ->and(property_exists($page->members[0], 'email'))->toBeFalse()
         ->and($page->nextCursor)->toBe('abc')
         ->and($page->previousCursor)->toBeNull();
     Http::assertSent(fn (Request $request): bool => $request->url() === 'https://platform.test/api/v1/members?typology=commercialisti&search=bianchi&cursor=start');

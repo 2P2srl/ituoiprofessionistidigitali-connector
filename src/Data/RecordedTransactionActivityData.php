@@ -31,20 +31,4 @@ final class RecordedTransactionActivityData extends Data
         public int $total_cents,
         public array $description,
     ) {}
-
-    /**
-     * The activity as the system sends it again, without the total the platform computes.
-     */
-    public function toActivity(): TransactionActivityData
-    {
-        return new TransactionActivityData(
-            reference: $this->reference,
-            compensation: CompensationData::from($this->compensation),
-            estimated_minutes: $this->estimated_minutes,
-            status: $this->status,
-            description: ActivityDescriptionData::from($this->description),
-            minutes_worked: $this->minutes_worked,
-            closed_at: $this->closed_at,
-        );
-    }
 }

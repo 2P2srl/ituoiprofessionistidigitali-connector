@@ -46,26 +46,6 @@ it('R6: fixes a valid JSON Schema 2020-12 for the description of an activity, wi
         ->and(new Validator()->validate($withText, $schema)->isValid())->toBeFalse();
 });
 
-it('C4 and L6: fixes a valid JSON Schema 2020-12 for every event of the platform, accepting what it sends', function (string $type, array $payload): void {
-    $schema = json_decode((string) file_get_contents(Contract::schemaPath($type, 1)));
-
-    expect($schema->{'$schema'})->toBe('https://json-schema.org/draft/2020-12/schema')
-        ->and($schema->{'$id'})->toBe("https://ituoiprofessionistidigitali.it/contract/event-types/{$type}/1.json")
-        ->and(matchesSchema($type, $payload))->toBeTrue();
-})->with([
-    'application received' => [Contract::APPLICATION_RECEIVED, applicationEvent()],
-    'application withdrawn' => [Contract::APPLICATION_WITHDRAWN, applicationEvent(['status' => 'withdrawn', 'closed_at' => '2026-10-11T08:00:00Z'])],
-    'counterparty selected' => [Contract::COUNTERPARTY_SELECTED, counterpartySelected()],
-    'counterparty selected, with a new field of the transaction' => [Contract::COUNTERPARTY_SELECTED, counterpartySelected(['settlements' => []])],
-    'transaction withdrawn' => [Contract::TRANSACTION_WITHDRAWN, transactionWithdrawn()],
-    'transaction withdrawn, open to members, with a new field of the transaction' => [Contract::TRANSACTION_WITHDRAWN, transactionWithdrawn(['audience' => 'member', 'settlements' => []])],
-    'application of a firm received' => [Contract::APPLICATION_RECEIVED, applicationEvent(['applicant' => firmApplicant()])],
-    'application of a firm withdrawn' => [Contract::APPLICATION_WITHDRAWN, applicationEvent(['status' => 'withdrawn', 'closed_at' => '2026-10-11T08:00:00Z', 'applicant' => firmApplicant()])],
-    'firm selected' => [Contract::COUNTERPARTY_SELECTED, firmSelected()],
-    'assignment received' => [Contract::ASSIGNMENT_RECEIVED, assignmentReceived()],
-    'assignment received, open to anyone, with a new field of the transaction' => [Contract::ASSIGNMENT_RECEIVED, assignmentReceived(['audience' => 'any', 'settlements' => []])],
-]);
-
 it('C4: fixes a schema for every event type of the contract, with its name in the $id', function (string $type): void {
     $schema = json_decode((string) file_get_contents(Contract::schemaPath($type, 1)));
 
@@ -73,41 +53,3 @@ it('C4: fixes a schema for every event type of the contract, with its name in th
         ->and($schema->{'$id'})->toBe("https://ituoiprofessionistidigitali.it/contract/event-types/{$type}/1.json")
         ->and($schema->title)->toBe("{$type} v1");
 })->with([Contract::CONTRACT_DETAILS, Contract::ACTIVITIES_ASSIGNED, Contract::ACTIVITY_STATUS]);
-
-it('L6: counts the assignment received among the events only the platform sends, and the events between firms out of them', function (): void {
-    expect(Contract::PLATFORM_EVENTS)->toContain(Contract::ASSIGNMENT_RECEIVED)
-        ->not->toContain(Contract::CONTRACT_DETAILS)
-        ->not->toContain(Contract::ACTIVITIES_ASSIGNED)
-        ->not->toContain(Contract::ACTIVITY_STATUS);
-});
-
-it('L9: takes in transaction.withdrawn only a published transaction withdrawn by the platform, and why', function (array $payload): void {
-    expect(matchesSchema(Contract::TRANSACTION_WITHDRAWN, $payload))->toBeFalse();
-})->with([
-    'with a counterparty' => [transactionWithdrawn(['counterparty' => recordedTransaction()['counterparty']])],
-    'not withdrawn' => [transactionWithdrawn(['status' => 'published', 'closed_at' => null])],
-    'without closing' => [transactionWithdrawn(['closed_at' => null])],
-    'without expiry' => [transactionWithdrawn(['expires_at' => null])],
-    'answered' => [transactionWithdrawn(['responded_at' => '2026-10-12T09:00:00Z'])],
-    'at the first revision' => [transactionWithdrawn(['revision' => 1])],
-    'with a closed activity' => [transactionWithdrawn(['activities' => [[...recordedTransaction()['activities'][0], 'status' => 'revoked', 'closed_at' => '2026-11-30T23:00:00Z']]])],
-    'without reason' => [['transaction' => withdrawnTransaction()]],
-    'with an unknown reason' => [[...transactionWithdrawn(), 'reason' => 'operator']],
-    'one more field' => [[...transactionWithdrawn(), 'notes' => 'Testo libero']],
-]);
-
-it('L7: keeps the tax code, the email, the VAT number and the mobile out of an application, and nothing else in the events', function (string $type, array $payload): void {
-    expect(matchesSchema($type, $payload))->toBeFalse();
-})->with([
-    'tax code of the applicant' => [Contract::APPLICATION_RECEIVED, applicationEvent(['applicant' => [...application()['applicant'], 'tax_code' => 'RSSMRA80A01H501U']])],
-    'email of the applicant' => [Contract::APPLICATION_WITHDRAWN, applicationEvent(['status' => 'withdrawn', 'closed_at' => '2026-10-11T08:00:00Z', 'applicant' => [...application()['applicant'], 'email' => 'mario.rossi@example.com']])],
-    'received not pending' => [Contract::APPLICATION_RECEIVED, applicationEvent(['status' => 'selected'])],
-    'withdrawn without closing' => [Contract::APPLICATION_WITHDRAWN, applicationEvent(['status' => 'withdrawn'])],
-    'one more field' => [Contract::APPLICATION_RECEIVED, [...applicationEvent(), 'notes' => 'Testo libero']],
-    'selection without mobile' => [Contract::COUNTERPARTY_SELECTED, [...counterpartySelected(), 'contact' => []]],
-    'mobile not in E.164' => [Contract::COUNTERPARTY_SELECTED, [...counterpartySelected(), 'contact' => ['mobile' => '3331234567']]],
-    'selection already signed' => [Contract::COUNTERPARTY_SELECTED, counterpartySelected(['signed_at' => '2026-10-12T10:00:00Z'])],
-    'firm with a VAT number before the selection' => [Contract::APPLICATION_RECEIVED, applicationEvent(['applicant' => [...firmApplicant(), 'vat_number' => '01234567897']])],
-    'firm with the fields of a person' => [Contract::APPLICATION_RECEIVED, applicationEvent(['applicant' => [...firmApplicant(), 'first_name' => 'Mario']])],
-    'member counterparty with a tax code' => [Contract::COUNTERPARTY_SELECTED, [...firmSelected(), 'transaction' => [...firmSelected()['transaction'], 'counterparty' => [...firmSelected()['transaction']['counterparty'], 'tax_code' => 'RSSMRA80A01H501U']]]],
-]);

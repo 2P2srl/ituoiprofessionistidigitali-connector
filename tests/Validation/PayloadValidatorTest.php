@@ -46,13 +46,13 @@ it('E5: refuses a type that is not in the catalogue', function (): void {
     expect(payloadErrors(envelope(['type' => 'coworking.request'])))->toHaveKey('type');
 });
 
-it('E5 and L6: refuses a type that only the platform sends', function (): void {
-    $selection = ['name' => Contract::COUNTERPARTY_SELECTED, 'description' => null, 'typologies' => null, 'sent_by' => 'platform', 'versions' => [
+it('E5: refuses a type that only the platform sends', function (): void {
+    $notice = ['name' => 'platform.notice', 'description' => null, 'typologies' => null, 'sent_by' => 'platform', 'versions' => [
         ['version' => 1, 'supported' => true, 'schema' => ['type' => 'object']],
     ]];
 
-    expect(payloadErrors(envelope(['type' => Contract::COUNTERPARTY_SELECTED, 'payload' => []]), [$selection]))
-        ->toBe(['type' => ['Il tipo di evento transaction.counterparty_selected lo manda solo il portale.']]);
+    expect(payloadErrors(envelope(['type' => 'platform.notice', 'payload' => []]), [$notice]))
+        ->toBe(['type' => ['Il tipo di evento platform.notice lo manda solo il portale.']]);
 });
 
 it('E5: refuses a version that does not exist or is no longer supported', function (): void {

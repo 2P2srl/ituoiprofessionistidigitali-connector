@@ -8,7 +8,7 @@ use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
 
 /**
- * A process handed to the selected firm, with the final client it is for and its activities.
+ * A process handed to the assigned firm, with the final client it is for and its activities.
  */
 final class AssignedProcessData extends Data
 {

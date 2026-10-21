@@ -15,7 +15,7 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Transformers\DateTimeInterfaceTransformer;
 
 /**
- * The payload of coworking.activity_status v1: the selected firm tells the principal that an activity was completed or
+ * The payload of coworking.activity_status v1: the assigned firm tells the principal that an activity was completed or
  * reopened, and when. The principal brings it into the PUTs of the transaction: only it registers them (rule R2).
  */
 final class ActivityStatusData extends Data

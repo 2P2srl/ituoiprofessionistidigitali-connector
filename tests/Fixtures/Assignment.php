@@ -45,7 +45,6 @@ final class Assignment extends Model implements RecordsPlatformTransaction
 
         return TransactionData::from([
             'assignment_reference' => 'incarico-1',
-            'audience' => 'person',
             'principal' => self::PRINCIPAL,
             'counterparty' => ['type' => 'person', 'member_id' => null, 'tax_code' => 'RSSMRA80A01H501U', 'first_name' => 'Mario', 'last_name' => 'Rossi', 'email' => 'mario.rossi@example.com', 'vat_number' => null, 'municipality' => 'Bari', 'province' => 'BA'],
             'typology' => 'commercialisti',

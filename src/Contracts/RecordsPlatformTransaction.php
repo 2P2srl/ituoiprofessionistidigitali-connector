@@ -17,7 +17,7 @@ interface RecordsPlatformTransaction
 {
     /**
      * The stable identifier of the sending in this system, never reused: it becomes the {reference} of the route.
-     * Null while it was never sent or published: a draft does not reach the register.
+     * Null while it was never sent: a draft does not reach the register.
      */
     public function platformTransactionReference(): ?string;
 

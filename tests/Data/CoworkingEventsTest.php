@@ -6,11 +6,8 @@ use Illuminate\Validation\ValidationException;
 use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Data\ActivitiesAssignedData;
 use ITuoiProfessionistiDigitali\Connector\Data\ActivityStatusData;
-use ITuoiProfessionistiDigitali\Connector\Data\AssignmentReceivedData;
 use ITuoiProfessionistiDigitali\Connector\Data\ContractDetailsData;
 use ITuoiProfessionistiDigitali\Connector\Enums\ActivityStatusChange;
-use ITuoiProfessionistiDigitali\Connector\Enums\CounterpartyType;
-use ITuoiProfessionistiDigitali\Connector\Enums\TransactionStatus;
 use ITuoiProfessionistiDigitali\Connector\Exceptions\PlatformRequestException;
 
 const COWORKING_TRANSACTION = '0199b6f5-0000-7000-8000-000000000001';
@@ -53,20 +50,6 @@ function activityStatus(array $overrides = []): array
 {
     return ['transaction' => ['id' => COWORKING_TRANSACTION], 'activity' => '43', 'status' => 'completed', 'occurred_at' => '2026-11-20T09:30:00+00:00', ...$overrides];
 }
-
-it('L6: reads the assignment received by the selected firm, with the principal revealed', function (): void {
-    $received = AssignmentReceivedData::from(assignmentReceived());
-
-    expect($received->transaction)
-        ->status->toBe(TransactionStatus::Accepted)
-        ->and($received->transaction->counterparty?->type)->toBe(CounterpartyType::Member)
-        ->and($received->transaction->counterparty?->member_id)->toBe(SELECTED_MEMBER)
-        ->and($received->principal)
-        ->id->toBe(PRINCIPAL_MEMBER)
-        ->name->toBe('Studio Rossi e Associati')
-        ->municipality->toBe('Bari')
-        ->province->toBe('BA');
-});
 
 it('E13: builds the envelope of an event between firms, correlated to the transaction, with a payload of its schema', function (string $type, string $data, array $payload): void {
     $envelope = $data::validateAndCreate($payload)->toEnvelope(sender: SELECTED_MEMBER, recipient: PRINCIPAL_MEMBER, typology: 'commercialisti');

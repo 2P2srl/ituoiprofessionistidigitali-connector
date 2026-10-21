@@ -8,7 +8,7 @@ use ITuoiProfessionistiDigitali\Connector\Validation\Rules\ItalianTaxCode;
 use Spatie\LaravelData\Data;
 
 /**
- * The final client of the principal for a process: the selected firm works for it, without making it its own client.
+ * The final client of the principal for a process: the assigned firm works for it, without making it its own client.
  * Sent only after the signature of the documents of the coworking.
  */
 final class FinalClientData extends Data

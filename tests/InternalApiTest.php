@@ -64,7 +64,6 @@ it('marks @internal the methods of the outboxes the package calls by itself', fu
 })->with([
     [TransactionOutbox::class, 'record'],
     [TransactionOutbox::class, 'confirmed'],
-    [TransactionOutbox::class, 'changedByPlatform'],
     [ProfessionalOutbox::class, 'resume'],
     [ProfessionalOutbox::class, 'hasUnregisteredTransactions'],
 ]);

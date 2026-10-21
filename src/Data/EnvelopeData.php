@@ -147,14 +147,6 @@ final class EnvelopeData extends Data
     }
 
     /**
-     * An event the platform generates itself, with no sender (rule L6): of a type it sends, or the verification ping.
-     */
-    public function isFromPlatform(): bool
-    {
-        return $this->sender === null && ($this->isVerification() || in_array($this->type, Contract::PLATFORM_EVENTS, true));
-    }
-
-    /**
      * A ping sent by the platform itself to verify the webhook, with no sender and no recipient.
      */
     public function isVerification(): bool

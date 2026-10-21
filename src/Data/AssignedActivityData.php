@@ -8,7 +8,7 @@ use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Data;
 
 /**
- * An activity handed to the selected firm: its reference in the transaction, the agreed amount and its guides.
+ * An activity handed to the assigned firm: its reference in the transaction, the agreed amount and its guides.
  */
 final class AssignedActivityData extends Data
 {

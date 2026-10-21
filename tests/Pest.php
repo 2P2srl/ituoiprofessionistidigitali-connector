@@ -43,7 +43,6 @@ function member(array $overrides = []): array
         'province' => 'BA',
         'typologies' => ['commercialisti'],
         'listed' => true,
-        'email' => 'segreteria@studiorossi.example',
         ...$overrides,
     ];
 }
@@ -95,15 +94,13 @@ function transaction(array $overrides = []): array
 {
     return [
         'assignment_reference' => 'incarico-1',
-        'audience' => 'person',
         'principal' => '0199b6f0-4e2a-7b31-9f6c-2d8a1e5b7c43',
-        'counterparty' => ['type' => 'person', 'member_id' => null, 'tax_code' => 'RSSMRA80A01H501U', 'first_name' => 'Mario', 'last_name' => 'Rossi', 'email' => 'mario.rossi@example.com', 'vat_number' => null, 'municipality' => 'Bari', 'province' => 'BA'],
+        'counterparty' => person(),
         'typology' => 'commercialisti',
         'title' => 'Contabilità ordinaria 2026',
         'description' => 'Registrazione delle fatture del 2026.',
         'status' => 'invited',
         'sent_at' => '2026-10-06T18:00:00+02:00',
-        'expires_at' => null,
         'responded_at' => null,
         'signed_at' => null,
         'closed_at' => null,
@@ -121,18 +118,15 @@ function recordedTransaction(array $overrides = []): array
 {
     return [
         'id' => '0199b6f5-0000-7000-8000-000000000001',
-        'origin' => 'system',
         'reference' => 'invio-1',
         'assignment_reference' => 'incarico-1',
-        'audience' => 'person',
         'principal' => '0199b6f0-4e2a-7b31-9f6c-2d8a1e5b7c43',
-        'counterparty' => ['type' => 'person', 'member_id' => null, 'tax_code' => 'RSSMRA80A01H501U', 'first_name' => 'Mario', 'last_name' => 'Rossi', 'email' => 'mario.rossi@example.com', 'vat_number' => null, 'municipality' => 'Bari', 'province' => 'BA'],
+        'counterparty' => person(),
         'typology' => 'commercialisti',
         'title' => 'Contabilità ordinaria 2026',
         'description' => 'Registrazione delle fatture del 2026.',
         'status' => 'invited',
         'sent_at' => '2026-10-06T16:00:00Z',
-        'expires_at' => null,
         'responded_at' => null,
         'signed_at' => null,
         'closed_at' => null,
@@ -148,144 +142,25 @@ function recordedTransaction(array $overrides = []): array
 }
 
 /**
- * An application as the platform returns it: pending, without the data that come with the selection (rule L7).
+ * A professional as the counterparty of an assignment to a person.
  *
+ * @param  array<string, mixed>  $overrides
  * @return array<string, mixed>
  */
-function application(array $overrides = []): array
+function person(array $overrides = []): array
 {
-    return [
-        'id' => '0199b6f9-0000-7000-8000-000000000001',
-        'status' => 'pending',
-        'applied_at' => '2026-10-10T08:00:00Z',
-        'terms_accepted_at' => '2026-10-10T08:00:00Z',
-        'accepted_revision' => 1,
-        'closed_at' => null,
-        'applicant' => ['type' => 'person', 'first_name' => 'Mario', 'last_name' => 'Rossi', 'municipality' => 'Bari', 'province' => 'BA', 'tax_code_verified' => false],
-        ...$overrides,
-    ];
+    return ['type' => 'person', 'member_id' => null, 'tax_code' => 'RSSMRA80A01H501U', 'first_name' => 'Mario', 'last_name' => 'Rossi', 'email' => 'mario.rossi@example.com', 'vat_number' => null, 'municipality' => 'Bari', 'province' => 'BA', ...$overrides];
 }
 
 /**
- * A firm that applied, as the principal sees it before the selection (rules L7 and L10).
+ * A member, of the same system or of another one, as the counterparty of an assignment to a firm.
  *
+ * @param  array<string, mixed>  $overrides
  * @return array<string, mixed>
  */
-function firmApplicant(): array
+function firm(array $overrides = []): array
 {
-    return ['type' => 'member', 'name' => 'Studio Bianchi', 'municipality' => 'Lecce', 'province' => 'LE'];
-}
-
-/**
- * The payload of transaction.counterparty_selected v1 for a firm: the member as counterparty, and no contact.
- *
- * @return array<string, mixed>
- */
-function firmSelected(): array
-{
-    return [
-        'transaction' => assignmentReceived()['transaction'],
-        'application' => application(['status' => 'selected', 'closed_at' => '2026-10-12T09:00:00Z', 'applicant' => firmApplicant()]),
-        'contact' => null,
-    ];
-}
-
-/**
- * The payload of transaction.application_received or transaction.application_withdrawn v1, on the published
- * transaction invio-1.
- *
- * @return array<string, mixed>
- */
-function applicationEvent(array $application = []): array
-{
-    return [
-        'transaction' => ['id' => recordedTransaction()['id'], 'reference' => 'invio-1'],
-        'application' => application($application),
-    ];
-}
-
-/**
- * A published transaction after the selection of its counterparty, as the platform returns it (rule L4):
- * accepted at revision 2, open to anyone, with its expiry, without signature.
- *
- * @return array<string, mixed>
- */
-function selectedTransaction(array $overrides = []): array
-{
-    return recordedTransaction([
-        'origin' => 'platform',
-        'audience' => 'any',
-        'status' => 'accepted',
-        'expires_at' => '2026-10-31T22:59:59Z',
-        'responded_at' => '2026-10-12T09:00:00Z',
-        'revision' => 2,
-        ...$overrides,
-    ]);
-}
-
-/**
- * The payload of transaction.assignment_received v1: the transaction accepted with the selection of a firm, and the
- * principal revealed to it.
- *
- * @return array<string, mixed>
- */
-function assignmentReceived(array $transaction = []): array
-{
-    return [
-        'transaction' => selectedTransaction([
-            'audience' => 'member',
-            'counterparty' => ['type' => 'member', 'member_id' => '0199b6f1-5c3a-7e10-8d2b-4a6f9e1c3b55', 'tax_code' => null, 'first_name' => null, 'last_name' => null, 'email' => null, 'vat_number' => null, 'municipality' => null, 'province' => null],
-            ...$transaction,
-        ]),
-        'principal' => ['id' => '0199b6f0-4e2a-7b31-9f6c-2d8a1e5b7c43', 'name' => 'Studio Rossi e Associati', 'municipality' => 'Bari', 'province' => 'BA'],
-    ];
-}
-
-/**
- * The payload of transaction.counterparty_selected v1.
- *
- * @return array<string, mixed>
- */
-function counterpartySelected(array $transaction = []): array
-{
-    return [
-        'transaction' => selectedTransaction($transaction),
-        'application' => application(['status' => 'selected', 'closed_at' => '2026-10-12T09:00:00Z']),
-        'contact' => ['mobile' => '+393331234567'],
-    ];
-}
-
-/**
- * A published transaction the platform withdrew by itself after its expiry (rule L9): withdrawn at revision 2,
- * open to anyone, without counterparty, with its activities still open.
- *
- * @return array<string, mixed>
- */
-function withdrawnTransaction(array $overrides = []): array
-{
-    return recordedTransaction([
-        'origin' => 'platform',
-        'audience' => 'any',
-        'counterparty' => null,
-        'status' => 'withdrawn',
-        'expires_at' => '2026-10-31T22:59:59Z',
-        'closed_at' => '2026-11-30T23:00:00Z',
-        'revision' => 2,
-        ...$overrides,
-    ]);
-}
-
-/**
- * The payload of transaction.withdrawn v1.
- *
- * @return array<string, mixed>
- */
-function transactionWithdrawn(array $transaction = []): array
-{
-    return [
-        'transaction' => withdrawnTransaction($transaction),
-        'reason' => 'expired',
-    ];
+    return ['type' => 'member', 'member_id' => '0199b6f1-5c3a-7e10-8d2b-4a6f9e1c3b55', 'tax_code' => null, 'first_name' => null, 'last_name' => null, 'email' => null, 'vat_number' => null, 'municipality' => null, 'province' => null, ...$overrides];
 }
 
 /**

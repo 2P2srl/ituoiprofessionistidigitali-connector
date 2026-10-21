@@ -66,19 +66,8 @@ it('M3: refuses the other malformed fields', function (array $overrides, string 
     'no typologies' => [['typologies' => []], 'typologies'],
     'repeated typology' => [['typologies' => ['commercialisti', 'commercialisti']], 'typologies.0'],
     'listed not boolean' => [['listed' => 'sometimes'], 'listed'],
-    'M14 without email' => [['email' => null], 'email'],
-    'M14 wrong email' => [['email' => 'segreteria'], 'email'],
-    'M14 email too long' => [['email' => str_repeat('a', 244).'@example.com'], 'email'],
 ]);
 
 it('M3: reads the subject type as an enum', function (): void {
     expect(MemberData::validateAndCreate(member())->subject_type)->toBe(SubjectType::Organization);
 });
-
-it('T6: keeps the email in lower case, however it is built', function (Closure $build): void {
-    expect($build(member(['email' => 'Segreteria@StudioRossi.Example']))->email)->toBe(member()['email']);
-})->with([
-    'validateAndCreate' => [MemberData::validateAndCreate(...)],
-    'from' => [MemberData::from(...)],
-    'constructor' => [static fn (array $member): MemberData => new MemberData(...[...$member, 'subject_type' => SubjectType::Organization])],
-]);

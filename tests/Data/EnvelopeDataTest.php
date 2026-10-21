@@ -86,22 +86,11 @@ it('P1: replies from the recipient to the sender, same typology, correlated to t
         ->payload->toBe(['challenge' => 'a1b2c3d4e5f6a7b8']);
 });
 
-it('L6: recognises an event of the platform, without sender, only of a type the platform sends', function (array $overrides, bool $isFromPlatform): void {
-    expect(EnvelopeData::from(envelope($overrides))->isFromPlatform())->toBe($isFromPlatform);
-})->with([
-    'verification' => [['sender' => null, 'recipient' => null, 'typology' => null], true],
-    'selection' => [['type' => Contract::COUNTERPARTY_SELECTED, 'sender' => null, 'correlation_id' => recordedTransaction()['id'], 'payload' => counterpartySelected()], true],
-    'withdrawal' => [['type' => Contract::TRANSACTION_WITHDRAWN, 'sender' => null, 'correlation_id' => recordedTransaction()['id'], 'payload' => transactionWithdrawn()], true],
-    'pong without sender' => [['type' => Contract::PONG, 'sender' => null], false],
-    'ping from a member' => [[], false],
-    'selection with a sender' => [['type' => Contract::COUNTERPARTY_SELECTED], false],
-]);
-
-it('P1 and L6: has nobody to reply to on an event of the platform', function (array $overrides): void {
+it('P1: has nobody to reply to on an event of the platform', function (array $overrides): void {
     EnvelopeData::from(envelope($overrides))->reply(Contract::PONG, 1, ['challenge' => 'a1b2c3d4e5f6a7b8']);
 })->throws(LogicException::class)->with([
     'verification' => [['sender' => null, 'recipient' => null, 'typology' => null]],
-    'application received' => [['type' => Contract::APPLICATION_RECEIVED, 'sender' => null, 'payload' => []]],
+    'without sender' => [['type' => 'platform.notice', 'sender' => null, 'payload' => []]],
 ]);
 
 it('E1: sends the date in RFC 3339 and an empty payload as a JSON object', function (): void {

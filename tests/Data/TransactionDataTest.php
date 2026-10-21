@@ -9,36 +9,12 @@ use ITuoiProfessionistiDigitali\Connector\Data\ActivityDescriptionData;
 use ITuoiProfessionistiDigitali\Connector\Data\CompensationData;
 use ITuoiProfessionistiDigitali\Connector\Data\CounterpartyData;
 use ITuoiProfessionistiDigitali\Connector\Data\ProcessData;
-use ITuoiProfessionistiDigitali\Connector\Data\RecordedTransactionData;
 use ITuoiProfessionistiDigitali\Connector\Data\TransactionActivityData;
 use ITuoiProfessionistiDigitali\Connector\Data\TransactionData;
-use ITuoiProfessionistiDigitali\Connector\Enums\Audience;
 use ITuoiProfessionistiDigitali\Connector\Enums\TransactionActivityStatus;
 use ITuoiProfessionistiDigitali\Connector\Enums\TransactionStatus;
 use ITuoiProfessionistiDigitali\Connector\Tests\Fixtures\NestedActivitiesData;
 use Spatie\LaravelData\Data;
-
-/**
- * A professional as the counterparty of an assignment to a person.
- *
- * @param  array<string, mixed>  $overrides
- * @return array<string, mixed>
- */
-function person(array $overrides = []): array
-{
-    return ['type' => 'person', 'member_id' => null, 'tax_code' => 'RSSMRA80A01H501U', 'first_name' => 'Mario', 'last_name' => 'Rossi', 'email' => 'mario.rossi@example.com', 'vat_number' => null, 'municipality' => 'Bari', 'province' => 'BA', ...$overrides];
-}
-
-/**
- * A member of the same system as the counterparty of an assignment to a firm.
- *
- * @param  array<string, mixed>  $overrides
- * @return array<string, mixed>
- */
-function firm(array $overrides = []): array
-{
-    return ['type' => 'member', 'member_id' => '0199b6f1-5c3a-7e10-8d2b-4a6f9e1c3b55', 'tax_code' => null, 'first_name' => null, 'last_name' => null, 'email' => null, 'vat_number' => null, 'municipality' => null, 'province' => null, ...$overrides];
-}
 
 /**
  * The activities and dates of a transaction in each status, consistent with rules R8 and R14.
@@ -52,8 +28,6 @@ function transactionIn(string $status): array
         'accepted', 'declined' => ['responded_at' => '2026-10-07T09:00:00Z'],
         'completed' => ['responded_at' => '2026-10-07T09:00:00Z', 'signed_at' => '2026-10-07T10:30:00Z', 'closed_at' => '2026-10-20T09:00:00Z', 'activities' => [activity(['status' => 'completed', 'closed_at' => '2026-10-20T09:00:00Z', 'minutes_worked' => 90])]],
         'revoked' => ['closed_at' => '2026-10-20T09:00:00Z', 'activities' => [activity(['status' => 'revoked', 'closed_at' => '2026-10-20T09:00:00Z'])]],
-        'published' => ['audience' => 'any', 'counterparty' => null, 'title' => 'Contabilità di una srl', 'description' => 'Registrazione delle fatture **mensile**.', 'expires_at' => '2026-11-06T18:00:00+01:00'],
-        'withdrawn' => ['audience' => 'person', 'counterparty' => null, 'title' => 'Contabilità di una srl', 'description' => 'Registrazione delle fatture.', 'expires_at' => '2026-11-06T18:00:00+01:00', 'closed_at' => '2026-10-20T09:00:00Z'],
         default => [],
     }]);
 }
@@ -97,15 +71,13 @@ it('R3, R5 and R8: sends a valid transaction with exactly the body of the platfo
     $wire = TransactionData::validateAndCreate(transaction())->toWire(revision: 3);
 
     expect(array_keys($wire))->toBe([
-        'assignment_reference', 'audience', 'principal', 'counterparty', 'typology', 'title', 'description', 'status', 'sent_at', 'expires_at',
-        'responded_at', 'signed_at', 'closed_at', 'currency', 'revision', 'type', 'schema_version', 'activities',
+        'assignment_reference', 'principal', 'counterparty', 'typology', 'title', 'description', 'status', 'sent_at', 'responded_at', 'signed_at', 'closed_at', 'currency', 'revision', 'type', 'schema_version', 'activities',
     ])->and($wire['signed_at'])->toBeNull()
         ->and($wire['revision'])->toBe(3)
         ->and($wire['sent_at'])->toBe('2026-10-06T18:00:00+02:00')
         ->and($wire['currency'])->toBe('EUR')
         ->and($wire['type'])->toBe('assignment')
         ->and($wire['schema_version'])->toBe(1)
-        ->and($wire['audience'])->toBe('person')
         ->and($wire['counterparty'])->toBe(['type' => 'person', 'member_id' => null, 'tax_code' => 'RSSMRA80A01H501U', 'first_name' => 'Mario', 'last_name' => 'Rossi', 'email' => 'mario.rossi@example.com', 'vat_number' => null, 'municipality' => 'Bari', 'province' => 'BA'])
         ->and($wire['activities'][0])->toBe([
             'reference' => 'riga-1',
@@ -118,21 +90,9 @@ it('R3, R5 and R8: sends a valid transaction with exactly the body of the platfo
         ]);
 });
 
-it('R3 and R16: sends a publication without counterparty, open to whom it says', function (): void {
-    $wire = TransactionData::validateAndCreate(transactionIn('published'))->toWire(revision: 1);
-
-    expect($wire['audience'])->toBe('any')
-        ->and($wire['counterparty'])->toBeNull()
-        ->and(array_slice(array_keys($wire), 3, 4))->toBe(['counterparty', 'typology', 'title', 'description'])
-        ->and($wire['title'])->toBe('Contabilità di una srl')
-        ->and($wire['description'])->toBe('Registrazione delle fatture **mensile**.')
-        ->and($wire['expires_at'])->toBe('2026-11-06T18:00:00+01:00');
-});
-
 it('builds the same body from code, with the typed DTOs', function (): void {
     $fromCode = new TransactionData(
         assignment_reference: 'incarico-1',
-        audience: Audience::Person,
         principal: '0199b6f0-4e2a-7b31-9f6c-2d8a1e5b7c43',
         counterparty: CounterpartyData::person('RSSMRA80A01H501U', 'Mario', 'Rossi', 'mario.rossi@example.com', municipality: 'Bari', province: 'BA'),
         typology: 'commercialisti',
@@ -156,7 +116,7 @@ it('R3: sends the optional details of a person as null when the system has none'
     expect(CounterpartyData::person('RSSMRA80A01H501U', 'Mario', 'Rossi', 'mario.rossi@example.com')->toWire())->toBe([
         'type' => 'person', 'member_id' => null, 'tax_code' => 'RSSMRA80A01H501U', 'first_name' => 'Mario', 'last_name' => 'Rossi',
         'email' => 'mario.rossi@example.com', 'vat_number' => null, 'municipality' => null, 'province' => null,
-    ])->and(TransactionData::validateAndCreate(transaction(['counterparty' => person(['vat_number' => '01234567897', 'municipality' => null, 'province' => null])]))->counterparty?->vat_number)
+    ])->and(TransactionData::validateAndCreate(transaction(['counterparty' => person(['vat_number' => '01234567897', 'municipality' => null, 'province' => null])]))->counterparty->vat_number)
         ->toBe('01234567897');
 });
 
@@ -170,7 +130,6 @@ it('R6: takes the texts of the firm in a direct assignment too, with HTML in the
 
 it('R3: sends a member counterparty and a fixed price with every key, null where they do not apply', function (): void {
     $wire = TransactionData::validateAndCreate(transaction([
-        'audience' => 'member',
         'counterparty' => CounterpartyData::member('0199b6f1-5c3a-7e10-8d2b-4a6f9e1c3b55')->toWire(),
         'activities' => [activity(['compensation' => CompensationData::fixed(150000)->toWire()])],
     ]))->toWire(1);
@@ -189,7 +148,7 @@ it('R6: reads the name of the activity flat or in the form of the schema, and se
 
 it('accepts every status with its activities and dates', function (string $status): void {
     expect(TransactionData::validateAndCreate(transactionIn($status))->status)->toBe(TransactionStatus::from($status));
-})->with(['invited', 'accepted', 'declined', 'completed', 'revoked', 'published', 'withdrawn']);
+})->with(['invited', 'accepted', 'declined', 'completed', 'revoked']);
 
 it('R8 and R22: accepts the signature where the contract allows it, and the work after it', function (array $body): void {
     expect(TransactionData::validateAndCreate($body)->status)->toBe(TransactionStatus::from($body['status']));
@@ -221,31 +180,6 @@ it('R15: computes the totals as the platform does, by the hour with the half cen
     'the half' => [4530, 1, 76],
 ]);
 
-it('R16 and L4: keeps whom a published assignment was open to, and its expiry, after the selection of a person', function (string $audience): void {
-    $wire = TransactionData::validateAndCreate([...transactionIn('accepted'), 'audience' => $audience, 'expires_at' => '2026-10-31T22:59:59Z'])->toWire(revision: 3);
-
-    expect($wire['audience'])->toBe($audience)
-        ->and($wire['counterparty'])->toBe(person())
-        ->and($wire['expires_at'])->toBe('2026-10-31T22:59:59+00:00');
-})->with(['any', 'person']);
-
-it('L4: sends again the transaction the platform accepted with the selection, as it returned it', function (): void {
-    $recorded = RecordedTransactionData::from(selectedTransaction(['activities' => [
-        [...activity(['compensation' => ['form' => 'fixed', 'hourly_rate_cents' => null, 'fixed_amount_cents' => 90000], 'description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null, 'deadline' => null]]), 'total_cents' => 90000],
-    ]]));
-
-    $wire = TransactionData::validateAndCreate($recorded->toTransaction()->toWire(revision: 3))->toWire(revision: 3);
-
-    expect($wire)->toBe([
-        ...Arr::except(selectedTransaction(), ['id', 'origin', 'reference', 'total_cents', 'updated_at']),
-        'sent_at' => '2026-10-06T16:00:00+00:00',
-        'expires_at' => '2026-10-31T22:59:59+00:00',
-        'responded_at' => '2026-10-12T09:00:00+00:00',
-        'revision' => 3,
-        'activities' => [activity(['compensation' => ['form' => 'fixed', 'hourly_rate_cents' => null, 'fixed_amount_cents' => 90000], 'description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null, 'deadline' => null]])],
-    ]);
-});
-
 it('refuses what the register would refuse', function (array $body, string $field): void {
     try
     {
@@ -257,10 +191,8 @@ it('refuses what the register would refuse', function (array $body, string $fiel
         expect($exception->errors())->toHaveKey($field);
     }
 })->with([
-    'R3 member without id' => [transaction(['audience' => 'member', 'counterparty' => firm(['member_id' => null])]), 'counterparty.member_id'],
+    'R3 member without id' => [transaction(['counterparty' => firm(['member_id' => null])]), 'counterparty.member_id'],
     'R3 person with a member id' => [transaction(['counterparty' => person(['member_id' => '0199b6f0-4e2a-7b31-9f6c-2d8a1e5b7c43'])]), 'counterparty.member_id'],
-    'R3 direct to anyone' => [transaction(['audience' => 'any']), 'audience'],
-    'R3 audience other than the counterparty' => [transaction(['audience' => 'member']), 'counterparty.type'],
     'R3 a key of the person missing' => [transaction(['counterparty' => Arr::except(person(), 'email')]), 'counterparty.email'],
     'R3 the member id missing' => [transaction(['counterparty' => Arr::except(person(), 'member_id')]), 'counterparty.member_id'],
     'R3 wrong tax code' => [transaction(['counterparty' => person(['tax_code' => 'RSSMRA80A01H501A'])]), 'counterparty.tax_code'],
@@ -270,12 +202,12 @@ it('refuses what the register would refuse', function (array $body, string $fiel
     'R3 person without email' => [transaction(['counterparty' => person(['email' => null])]), 'counterparty.email'],
     'R3 wrong email' => [transaction(['counterparty' => person(['email' => 'mario'])]), 'counterparty.email'],
     'R3 email too long' => [transaction(['counterparty' => person(['email' => str_repeat('a', 244).'@example.com'])]), 'counterparty.email'],
-    'R3 member with an email' => [transaction(['audience' => 'member', 'counterparty' => firm(['email' => 'mario.rossi@example.com'])]), 'counterparty.email'],
+    'R3 member with an email' => [transaction(['counterparty' => firm(['email' => 'mario.rossi@example.com'])]), 'counterparty.email'],
     'R3 wrong vat number' => [transaction(['counterparty' => person(['vat_number' => '01234567890'])]), 'counterparty.vat_number'],
     'R3 empty municipality' => [transaction(['counterparty' => person(['municipality' => ''])]), 'counterparty.municipality'],
     'R3 province in lower case' => [transaction(['counterparty' => person(['province' => 'ba'])]), 'counterparty.province'],
-    'R3 member with a name' => [transaction(['audience' => 'member', 'counterparty' => firm(['last_name' => 'Rossi'])]), 'counterparty.last_name'],
-    'R3 sent without counterparty' => [transaction(['counterparty' => null]), 'counterparty'],
+    'R3 member with a name' => [transaction(['counterparty' => firm(['last_name' => 'Rossi'])]), 'counterparty.last_name'],
+    'R3 without counterparty' => [transaction(['counterparty' => null]), 'counterparty'],
     'R6 a field of the client' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => 'x', 'client' => 'Rossi'], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process'],
     'R6 an empty name' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => ''], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process.name'],
     'R6 a name of the process too long' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => str_repeat('a', 256)], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process.name'],
@@ -286,28 +218,20 @@ it('refuses what the register would refuse', function (array $body, string $fiel
     'R6 a process without reference' => [transaction(['activities' => [activity(['description' => ['process' => ['name' => 'Contabilità ordinaria'], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process.reference'],
     'R6 a reference of the process too long' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => str_repeat('a', 192), 'name' => null], 'activity' => null, 'deadline' => null]])]]), 'activities.0.description.process.reference'],
     'R6 a deadline that is not a date' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null, 'deadline' => 'domani']])]]), 'activities.0.description.deadline'],
-    'R16 without audience' => [[...transactionIn('published'), 'audience' => null], 'audience'],
-    'R16 open to a bank' => [[...transactionIn('published'), 'audience' => 'bank'], 'audience'],
-    'R16 sent without audience' => [transaction(['audience' => null]), 'audience'],
-    'R16 selected for firms, with a person' => [[...transactionIn('accepted'), 'audience' => 'member', 'expires_at' => '2026-10-31T22:59:59Z'], 'counterparty.type'],
-    'R3 published with a counterparty' => [[...transactionIn('published'), 'counterparty' => person()], 'counterparty'],
     'R5 both amounts' => [transaction(['activities' => [activity(['compensation' => ['form' => 'hourly', 'hourly_rate_cents' => 4500, 'fixed_amount_cents' => 1]])]]), 'activities.0.compensation.fixed_amount_cents'],
     'R5 fixed without amount' => [transaction(['activities' => [activity(['compensation' => ['form' => 'fixed']])]]), 'activities.0.compensation.fixed_amount_cents'],
     'R5 another currency' => [transaction(['currency' => 'USD']), 'currency'],
     'R5 no estimated minutes' => [transaction(['activities' => [activity(['estimated_minutes' => null])]]), 'activities.0.estimated_minutes'],
     'R5 minutes of an open activity' => [transaction(['activities' => [activity(['minutes_worked' => 0])]]), 'activities.0.minutes_worked'],
     'R5 completed activity without minutes' => [[...transactionIn('completed'), 'activities' => [activity(['status' => 'completed', 'closed_at' => '2026-10-20T09:00:00Z'])]], 'activities.0.minutes_worked'],
-    'R5 minutes of a firm' => [[...transactionIn('completed'), 'audience' => 'member', 'counterparty' => firm()], 'activities.0.minutes_worked'],
+    'R5 minutes of a firm' => [[...transactionIn('completed'), 'counterparty' => firm()], 'activities.0.minutes_worked'],
     'R6 no activities' => [transaction(['activities' => []]), 'activities'],
     'R8 accepted without answer' => [transaction(['status' => 'accepted']), 'responded_at'],
     'R8 completed without closing' => [[...transactionIn('completed'), 'closed_at' => null], 'closed_at'],
     'R8 invited with an answer' => [transaction(['responded_at' => '2026-10-07T09:00:00Z']), 'responded_at'],
-    'R8 published with an answer' => [[...transactionIn('published'), 'responded_at' => '2026-10-07T09:00:00Z'], 'responded_at'],
     'R8 completed without signature' => [[...transactionIn('completed'), 'signed_at' => null], 'signed_at'],
     'R8 invited and signed' => [transaction(['signed_at' => '2026-10-07T10:30:00Z']), 'signed_at'],
     'R8 declined and signed' => [[...transactionIn('declined'), 'signed_at' => '2026-10-07T10:30:00Z'], 'signed_at'],
-    'R8 published and signed' => [[...transactionIn('published'), 'signed_at' => '2026-10-07T10:30:00Z'], 'signed_at'],
-    'R8 withdrawn and signed' => [[...transactionIn('withdrawn'), 'signed_at' => '2026-10-07T10:30:00Z'], 'signed_at'],
     'R8 signed without answer' => [[...transactionIn('revoked'), 'signed_at' => '2026-10-07T10:30:00Z'], 'signed_at'],
     'R8 signed before the answer' => [[...transactionIn('accepted'), 'signed_at' => '2026-10-07T08:59:59Z'], 'signed_at'],
     'R8 signed after the closing' => [[...transactionIn('completed'), 'signed_at' => '2026-10-20T09:00:01Z'], 'signed_at'],
@@ -319,18 +243,11 @@ it('refuses what the register would refuse', function (array $body, string $fiel
     'R14 accepted without open activities' => [[...transactionIn('accepted'), 'activities' => transactionIn('completed')['activities']], 'status'],
     'R14 completed with an open activity' => [[...transactionIn('completed'), 'activities' => [...transactionIn('completed')['activities'], activity(['reference' => 'riga-2'])]], 'status'],
     'R14 revoked with a completed activity' => [[...transactionIn('revoked'), 'activities' => transactionIn('completed')['activities']], 'status'],
-    'R16 published without expiry' => [[...transactionIn('published'), 'expires_at' => null], 'expires_at'],
-    'R16 expiry before the sending' => [[...transactionIn('published'), 'expires_at' => '2026-10-01T09:00:00Z'], 'expires_at'],
-    'R16 invited with an expiry' => [transaction(['expires_at' => '2026-11-06T18:00:00+01:00']), 'expires_at'],
-    'R16 invited to anyone with an expiry' => [transaction(['audience' => 'any', 'expires_at' => '2026-11-06T18:00:00+01:00']), 'expires_at'],
-    'R16 declined with an expiry' => [[...transactionIn('declined'), 'expires_at' => '2026-11-06T18:00:00+01:00'], 'expires_at'],
     'unknown status' => [transaction(['status' => 'rejected']), 'status'],
     'typology in upper case' => [transaction(['typology' => 'Commercialisti']), 'typology'],
-    'R6 published without title' => [[...transactionIn('published'), 'title' => null], 'title'],
     'R6 sent without title' => [transaction(['title' => null]), 'title'],
     'R6 sent without description' => [transaction(['description' => null]), 'description'],
     'without the key of the counterparty' => [Arr::except(transaction(), 'counterparty'), 'counterparty'],
-    'without the key of the expiry' => [Arr::except(transaction(), 'expires_at'), 'expires_at'],
     'without the key of the answer' => [Arr::except(transaction(), 'responded_at'), 'responded_at'],
     'without the key of the signature' => [Arr::except(transaction(), 'signed_at'), 'signed_at'],
     'without the key of the closing' => [Arr::except(transaction(), 'closed_at'), 'closed_at'],
@@ -338,7 +255,6 @@ it('refuses what the register would refuse', function (array $body, string $fiel
     'an activity without the key of the closing' => [transaction(['activities' => [Arr::except(activity(), 'closed_at')]]), 'activities.0.closed_at'],
     'a compensation without the key of the fixed amount' => [transaction(['activities' => [activity(['compensation' => ['form' => 'hourly', 'hourly_rate_cents' => 4500]])]]), 'activities.0.compensation.fixed_amount_cents'],
     'a description without the key of the deadline' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null]])]]), 'activities.0.description.deadline'],
-    'R6 published without description' => [[...transactionIn('published'), 'description' => null], 'description'],
     'R6 title too long' => [transaction(['title' => str_repeat('a', 256)]), 'title'],
     'R6 empty title' => [transaction(['title' => '']), 'title'],
     'R6 empty description' => [transaction(['description' => '']), 'description'],
@@ -360,7 +276,7 @@ it('R10: refuses the activities as the nested rules of Spatie did, with the same
     'R6 a description outside the schema' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => 'x', 'client' => 'Rossi'], 'activity' => null, 'deadline' => null]])]]), true],
     'R6 a deadline that is not a date' => [transaction(['activities' => [activity(['description' => ['process' => ['reference' => 'processo-1', 'name' => null], 'activity' => null, 'deadline' => 'domani']])]]), true],
     'an unknown status' => [transaction(['activities' => [activity(['status' => 'paused'])]]), true],
-    'R5 minutes of a firm, read from the counterparty' => [[...transactionIn('completed'), 'audience' => 'member', 'counterparty' => firm()], true],
+    'R5 minutes of a firm, read from the counterparty' => [[...transactionIn('completed'), 'counterparty' => firm()], true],
     'R22 completed without signature, read from the header' => [[...transactionIn('accepted'), 'activities' => [activity(['status' => 'completed', 'closed_at' => '2026-10-20T09:00:00Z', 'minutes_worked' => 90]), activity(['reference' => 'riga-2'])]], true],
     'errors in several activities' => [transaction(['activities' => [activity(), activity(['reference' => null]), 'riga-3', activity(['reference' => 'riga-4', 'estimated_minutes' => -1, 'status' => 'paused'])]]), true],
     'activities that are not a list' => [transaction(['activities' => ['riga-1' => activity()]]), true],

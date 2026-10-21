@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use ITuoiProfessionistiDigitali\Connector\Contract;
 use ITuoiProfessionistiDigitali\Connector\Data\EventTypeData;
 use ITuoiProfessionistiDigitali\Connector\Data\EventTypeVersionData;
 use ITuoiProfessionistiDigitali\Connector\Data\ListedMemberData;
@@ -22,10 +21,10 @@ it('C3: finds a version of an event type and the typologies it allows', function
         ->and($forSome->allowsTypology('avvocati'))->toBeTrue();
 });
 
-it('C3 and L6: reads who sends the events of a type, the members when the catalogue does not say', function (): void {
+it('C3: reads who sends the events of a type, the members when the catalogue does not say', function (): void {
     expect(EventTypeData::from(catalogue()[0])->sent_by)->toBe(EventSender::Members)
         ->and(EventTypeData::from([...catalogue()[0], 'sent_by' => 'members'])->sent_by)->toBe(EventSender::Members)
-        ->and(EventTypeData::from([...catalogue()[0], 'name' => Contract::APPLICATION_RECEIVED, 'sent_by' => 'platform'])->sent_by)->toBe(EventSender::Platform);
+        ->and(EventTypeData::from([...catalogue()[0], 'name' => 'platform.notice', 'sent_by' => 'platform'])->sent_by)->toBe(EventSender::Platform);
 });
 
 it('S6: reads a system before and after its verification', function (): void {
@@ -55,7 +54,7 @@ it('S6: reads a system before and after its verification', function (): void {
 });
 
 it('M13: tells whether a page of members has a next one', function (): void {
-    $member = ListedMemberData::from(collect(member())->except(['external_ref', 'tax_code', 'listed', 'email'])->put('id', 'x')->all());
+    $member = ListedMemberData::from(collect(member())->except(['external_ref', 'tax_code', 'listed'])->put('id', 'x')->all());
 
     expect(new MemberPage([$member], 'next', null)->hasMore())->toBeTrue()
         ->and(new MemberPage([], null, 'previous')->hasMore())->toBeFalse();

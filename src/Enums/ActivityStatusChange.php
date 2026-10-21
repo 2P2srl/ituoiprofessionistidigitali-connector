@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ITuoiProfessionistiDigitali\Connector\Enums;
 
 /**
- * What the selected firm tells the principal about an activity with coworking.activity_status.
+ * What the assigned firm tells the principal about an activity with coworking.activity_status.
  */
 enum ActivityStatusChange: string
 {

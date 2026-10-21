@@ -10,7 +10,7 @@ use Spatie\LaravelData\Data;
 
 /**
  * The payload of coworking.contract_details v1: the details for the contracts of the coworking, that each of the two
- * firms sends to the other right after the selection.
+ * firms sends to the other right after the acceptance of the assignment.
  */
 final class ContractDetailsData extends Data
 {

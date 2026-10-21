@@ -16,7 +16,7 @@ final class EventTypeData extends Data
     /**
      * @param  list<string>|null  $typologies  Null when the type is allowed for every typology.
      * @param  list<EventTypeVersionData>  $versions
-     * @param  EventSender  $sent_by  Members when absent, as in a catalogue cached before rule L6.
+     * @param  EventSender  $sent_by  Members when absent, as in a catalogue cached before the field existed.
      */
     public function __construct(
         public string $name,

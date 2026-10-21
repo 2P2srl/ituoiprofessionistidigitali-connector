@@ -45,7 +45,7 @@ final class PlatformOutbox
     }
 
     /**
-     * Nothing of the model reached the outbox: a draft, never sent or published.
+     * Nothing of the model reached the outbox: a draft, never sent.
      */
     public static function assertNotRecorded(RecordsPlatformTransaction $model): void
     {
