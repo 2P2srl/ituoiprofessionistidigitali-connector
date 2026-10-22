@@ -40,7 +40,9 @@ final class ConnectorServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         $this->callAfterResolving(Schedule::class, static function (Schedule $schedule): void {
-            $schedule->command(SendOutboxCommand::class)->everyFiveMinutes()->withoutOverlapping();
+            // With a rolling deploy two containers run the scheduler at once: the lock on the
+            // shared cache store lets only one of them send the outbox.
+            $schedule->command(SendOutboxCommand::class)->everyFiveMinutes()->withoutOverlapping()->onOneServer();
         });
 
         if ($this->app->make(ConnectorConfig::class)->replyToPings)

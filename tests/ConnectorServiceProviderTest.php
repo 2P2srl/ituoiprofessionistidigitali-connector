@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -43,4 +44,14 @@ it('shares one client and one configuration', function (): void {
         ->and(resolve(ConnectorConfig::class)->clientId)->toBe('client-id')
         ->and(Event::hasListeners(PlatformEventReceived::class))->toBeTrue()
         ->and(class_exists(ReplyToPing::class))->toBeTrue();
+});
+
+it('sends the outbox every five minutes, on one server only', function (): void {
+    $events = collect(resolve(Schedule::class)->events())
+        ->filter(fn ($event): bool => str_contains((string) $event->command, 'platform:send-outbox'));
+
+    expect($events)->toHaveCount(1)
+        ->and($events->first()->expression)->toBe('*/5 * * * *')
+        ->and($events->first()->withoutOverlapping)->toBeTrue()
+        ->and($events->first()->onOneServer)->toBeTrue();
 });
